@@ -142,21 +142,21 @@ const FALLBACK_SLIPS: Weighment[] = [
 
 // Smart default URL detection
 function getDefaultApiUrl(): string {
-  if (typeof window !== "undefined" && window.location) {
-    if (window.location.port === "3000") {
-      return "/api/weighments";
-    }
-    if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
-      return "http://localhost:3000/api/weighments";
-    }
-    if (window.location.origin && window.location.origin.startsWith("http")) {
-      return `${window.location.origin}/api/weighments`;
+  if (Platform.OS === "web") {
+    try {
+      if (typeof window !== "undefined" && window?.location) {
+        if (window.location.port === "3000") return "/api/weighments";
+        if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+          return "http://localhost:3000/api/weighments";
+        }
+        if (window.location.origin) return `${window.location.origin}/api/weighments`;
+      }
+    } catch {
+      // ignore
     }
   }
-  if (Platform.OS === "android") {
-    return "http://10.0.2.2:3000/api/weighments";
-  }
-  return "http://localhost:3000/api/weighments";
+  // On physical mobile device, default to the user's host IP
+  return "http://192.168.68.51:3000/api/weighments";
 }
 
 type PageTab = "dashboard" | "pending" | "completed" | "item_report";
