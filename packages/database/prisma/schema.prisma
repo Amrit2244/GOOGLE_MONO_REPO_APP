@@ -1,0 +1,42 @@
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+model Weighment {
+    id              String    @id @default(uuid())
+    slipNo          Int       @unique
+    partyName       String
+    itemName        String
+    vehicleNumber   String
+    rate            Float     @default(0.0)
+    firstWeightType String
+    grossWeight     Float     @default(0.0)
+    tareWeight      Float     @default(0.0)
+    netWeight       Float     @default(0.0)
+    isComplete      Boolean   @default(false)
+    firstTimestamp  DateTime
+    secondTimestamp DateTime?
+
+    tallySynced    Boolean   @default(false)
+    tallyVoucherNo String?
+    tallySyncedAt  DateTime?
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+model Party {
+    id    String  @id @default(uuid())
+    name  String  @unique
+    phone String?
+}
+
+model Item {
+    id   String @id @default(uuid())
+    name String @unique
+}

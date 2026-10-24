@@ -1,0 +1,22 @@
+{
+  "name": "stone-crusher-monorepo",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "packageManager": "npm@10.8.2",
+  "scripts": {
+    "build": "npm run build --workspace=web",
+    "dev": "npm run dev --workspace=web",
+    "start": "npm run start --workspace=web",
+    "lint": "turbo run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "check-types": "turbo run check-types"
+  },
+  "devDependencies": {
+    "prettier": "3.9.6",
+    "turbo": "^2.11.8",
+    "typescript": "7.0.2"
+  }
+}

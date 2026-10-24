@@ -1,0 +1,8 @@
+{
+  "name": "Stone Crusher Weighbridge Management",
+  "description": "Live weighbridge dashboard and sync system for stone crusher operations, tracking weighments, parties, and items.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
