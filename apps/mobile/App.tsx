@@ -108,6 +108,36 @@ const FALLBACK_SLIPS: Weighment[] = [
     secondTimestamp: new Date(Date.now() - 170 * 60 * 1000).toISOString(),
     tallySynced: false,
   },
+  {
+    id: "weigh-1040",
+    slipNo: 1040,
+    partyName: "Jaipur Express Highway JV",
+    vehicleNumber: "RJ-14-CC-2204",
+    itemName: "10mm Blue Metal",
+    rate: 480,
+    grossWeight: 0,
+    tareWeight: 13.9,
+    netWeight: 0,
+    isComplete: false,
+    firstTimestamp: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
+    secondTimestamp: null,
+    tallySynced: false,
+  },
+  {
+    id: "weigh-1039",
+    slipNo: 1039,
+    partyName: "Apex Infra Projects",
+    vehicleNumber: "HR-55-XY-7711",
+    itemName: "20mm Aggregate",
+    rate: 450,
+    grossWeight: 41.2,
+    tareWeight: 13.8,
+    netWeight: 27.4,
+    isComplete: true,
+    firstTimestamp: new Date(Date.now() - 260 * 60 * 1000).toISOString(),
+    secondTimestamp: new Date(Date.now() - 230 * 60 * 1000).toISOString(),
+    tallySynced: true,
+  },
 ];
 
 // Smart default URL detection
@@ -129,17 +159,22 @@ function getDefaultApiUrl(): string {
   return "http://localhost:3000/api/weighments";
 }
 
+type PageTab = "dashboard" | "pending" | "completed" | "item_report";
+
 export default function App() {
+  const [currentPage, setCurrentPage] = useState<PageTab>("dashboard");
   const [apiUrl, setApiUrl] = useState<string>(() => getDefaultApiUrl());
   const [slips, setSlips] = useState<Weighment[]>(FALLBACK_SLIPS);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "complete" | "pending">("all");
   const [selectedSlip, setSelectedSlip] = useState<Weighment | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [customIpInput, setCustomIpInput] = useState(apiUrl);
+
+  // Selected item for Page 3
+  const [selectedItemName, setSelectedItemName] = useState<string>("All Items");
 
   const fetchSlips = async () => {
     try {
@@ -162,7 +197,6 @@ export default function App() {
         setIsOfflineMode(false);
       }
     } catch {
-      // Gracefully switch to fallback operational slips without crashing or red screens
       setIsOfflineMode(true);
       setSlips((prev) => (prev && prev.length > 0 ? prev : FALLBACK_SLIPS));
     } finally {
@@ -180,25 +214,16 @@ export default function App() {
     fetchSlips();
   };
 
-  // Filtered weighments
-  const filteredSlips = useMemo(() => {
-    return slips.filter((item) => {
-      if (statusFilter === "complete" && !item.isComplete) return false;
-      if (statusFilter === "pending" && item.isComplete) return false;
-
-      if (searchQuery.trim()) {
-        const q = searchQuery.trim().toLowerCase();
-        const party = (item.partyName || "").toLowerCase();
-        const vehicle = (item.vehicleNumber || "").toLowerCase();
-        const itemType = (item.itemName || "").toLowerCase();
-        const slip = String(item.slipNo);
-        return party.includes(q) || vehicle.includes(q) || itemType.includes(q) || slip.includes(q);
-      }
-      return true;
+  // Distinct Materials
+  const distinctMaterials = useMemo(() => {
+    const set = new Set<string>();
+    slips.forEach((s) => {
+      if (s.itemName) set.add(s.itemName);
     });
-  }, [slips, statusFilter, searchQuery]);
+    return ["All Items", ...Array.from(set)];
+  }, [slips]);
 
-  // Aggregate KPI stats
+  // Overall Statistics
   const stats = useMemo(() => {
     const completed = slips.filter((s) => s.isComplete);
     const inPlant = slips.filter((s) => !s.isComplete);
@@ -212,8 +237,54 @@ export default function App() {
     };
   }, [slips]);
 
-  const renderItem = ({ item }: { item: Weighment }) => (
+  // 1. Pending Slips (Page 1)
+  const pendingSlips = useMemo(() => {
+    return slips.filter((s) => !s.isComplete && matchesSearch(s, searchQuery));
+  }, [slips, searchQuery]);
+
+  // 2. Completed Slips (Page 2)
+  const completedSlips = useMemo(() => {
+    return slips.filter((s) => s.isComplete && matchesSearch(s, searchQuery));
+  }, [slips, searchQuery]);
+
+  const completedTotalNetWeight = useMemo(() => {
+    return completedSlips.reduce((sum, s) => sum + (s.netWeight || 0), 0);
+  }, [completedSlips]);
+
+  // 3. Item-Wise Slips (Page 3)
+  const itemWiseSlips = useMemo(() => {
+    return slips.filter((s) => {
+      const matchesItem = selectedItemName === "All Items" || s.itemName === selectedItemName;
+      return matchesItem && matchesSearch(s, searchQuery);
+    });
+  }, [slips, selectedItemName, searchQuery]);
+
+  const itemWiseStats = useMemo(() => {
+    const completed = itemWiseSlips.filter((s) => s.isComplete);
+    const totalNet = completed.reduce((sum, s) => sum + (s.netWeight || 0), 0);
+    return {
+      totalVehicles: itemWiseSlips.length,
+      completedVehicles: completed.length,
+      inPlantVehicles: itemWiseSlips.length - completed.length,
+      totalNetWeightQtl: totalNet.toFixed(2),
+      totalNetWeightMT: (totalNet / 10).toFixed(2),
+    };
+  }, [itemWiseSlips]);
+
+  function matchesSearch(item: Weighment, query: string) {
+    if (!query.trim()) return true;
+    const q = query.trim().toLowerCase();
+    const party = (item.partyName || "").toLowerCase();
+    const vehicle = (item.vehicleNumber || "").toLowerCase();
+    const itemType = (item.itemName || "").toLowerCase();
+    const slip = String(item.slipNo);
+    return party.includes(q) || vehicle.includes(q) || itemType.includes(q) || slip.includes(q);
+  }
+
+  // Common card renderer
+  const renderWeighmentCard = (item: Weighment) => (
     <TouchableOpacity
+      key={item.id}
       activeOpacity={0.85}
       onPress={() => setSelectedSlip(item)}
       style={styles.card}
@@ -259,14 +330,23 @@ export default function App() {
 
       <View style={styles.weightRow}>
         <View>
-          <Text style={styles.weightLabel}>NET WEIGHT</Text>
-          <Text style={styles.weightValue}>
-            {item.isComplete ? `${item.netWeight.toFixed(2)} QTL` : "Pending 2nd Wt"}
+          <Text style={styles.weightLabel}>
+            {item.isComplete ? "NET MATERIAL WT" : "1ST RECORDED WT"}
+          </Text>
+          <Text
+            style={[
+              styles.weightValue,
+              { color: item.isComplete ? "#059669" : "#d97706" },
+            ]}
+          >
+            {item.isComplete
+              ? `${item.netWeight.toFixed(2)} QTL`
+              : `Tare: ${(item.tareWeight || item.grossWeight || 0).toFixed(2)} QTL`}
           </Text>
         </View>
 
         <View style={styles.viewSlipAction}>
-          <Text style={styles.viewSlipText}>View Slip →</Text>
+          <Text style={styles.viewSlipText}>Ticket Details →</Text>
         </View>
       </View>
     </TouchableOpacity>
@@ -276,13 +356,33 @@ export default function App() {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="light" />
 
-      {/* Industrial Header */}
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <View>
-            <Text style={styles.brandSubtitle}>STONE CRUSHER & MINING</Text>
-            <Text style={styles.headerTitle}>Weighbridge Monitor</Text>
+          <View style={{ flex: 1 }}>
+            {currentPage !== "dashboard" ? (
+              <TouchableOpacity
+                onPress={() => {
+                  setSearchQuery("");
+                  setCurrentPage("dashboard");
+                }}
+                style={styles.backButton}
+              >
+                <Text style={styles.backButtonArrow}>←</Text>
+                <Text style={styles.backButtonText}>Dashboard</Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.brandSubtitle}>STONE CRUSHER & MINING</Text>
+            )}
+
+            <Text style={styles.headerTitle}>
+              {currentPage === "dashboard" && "Weighbridge Operations"}
+              {currentPage === "pending" && "Pending Vehicles (1st Wt)"}
+              {currentPage === "completed" && "Completed Vehicles"}
+              {currentPage === "item_report" && "Item-Wise Weight Report"}
+            </Text>
           </View>
+
           <TouchableOpacity
             style={styles.settingsButton}
             onPress={() => {
@@ -308,7 +408,7 @@ export default function App() {
             <View style={styles.offlineLeft}>
               <Text style={styles.offlineDot}>●</Text>
               <Text style={styles.offlineText} numberOfLines={1}>
-                Using Plant Demo Data (Tap to set Server IP)
+                Using Plant Demo Data (Tap ⚙ to connect Server)
               </Text>
             </View>
             <Text style={styles.offlineLink}>Config ⚙</Text>
@@ -317,144 +417,434 @@ export default function App() {
       </View>
 
       <View style={styles.container}>
-        {/* KPI Strip */}
-        <View style={styles.kpiContainer}>
-          <View style={styles.kpiCard}>
-            <Text style={styles.kpiLabel}>TOTAL DISPATCH</Text>
-            <Text style={styles.kpiValue}>
-              {stats.netWeightQtl} <Text style={styles.kpiUnit}>QTL</Text>
-            </Text>
-            <Text style={styles.kpiSub}>~{stats.netWeightMT} Tonnes</Text>
-          </View>
-
-          <View style={styles.kpiCard}>
-            <Text style={styles.kpiLabel}>COMPLETED</Text>
-            <Text style={[styles.kpiValue, { color: "#059669" }]}>
-              {stats.completedCount}
-            </Text>
-            <Text style={styles.kpiSub}>Dispatched</Text>
-          </View>
-
-          <View style={styles.kpiCard}>
-            <Text style={styles.kpiLabel}>IN-PLANT</Text>
-            <Text style={[styles.kpiValue, { color: "#d97706" }]}>
-              {stats.inPlantCount}
-            </Text>
-            <Text style={styles.kpiSub}>1st Wt Pending</Text>
-          </View>
-        </View>
-
-        {/* Search Bar */}
-        <View style={styles.searchContainer}>
-          <Text style={styles.searchIcon}>🔍</Text>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search party, vehicle, slip #..."
-            placeholderTextColor="#94a3b8"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            clearButtonMode="while-editing"
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery("")} style={styles.clearBtn}>
-              <Text style={styles.clearBtnText}>✕</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Segmented Filter Pills */}
-        <View style={styles.filterPills}>
-          <TouchableOpacity
-            style={[
-              styles.pill,
-              statusFilter === "all" ? styles.pillActive : styles.pillInactive,
-            ]}
-            onPress={() => setStatusFilter("all")}
-          >
-            <Text
-              style={[
-                styles.pillText,
-                statusFilter === "all" ? styles.pillTextActive : styles.pillTextInactive,
-              ]}
-            >
-              All Slips ({slips.length})
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.pill,
-              statusFilter === "complete" ? styles.pillActive : styles.pillInactive,
-            ]}
-            onPress={() => setStatusFilter("complete")}
-          >
-            <Text
-              style={[
-                styles.pillText,
-                statusFilter === "complete" ? styles.pillTextActive : styles.pillTextInactive,
-              ]}
-            >
-              Completed ({stats.completedCount})
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.pill,
-              statusFilter === "pending" ? styles.pillActive : styles.pillInactive,
-            ]}
-            onPress={() => setStatusFilter("pending")}
-          >
-            <Text
-              style={[
-                styles.pillText,
-                statusFilter === "pending" ? styles.pillTextActive : styles.pillTextInactive,
-              ]}
-            >
-              In-Plant ({stats.inPlantCount})
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Weighments List */}
-        {loading ? (
-          <View style={styles.loadingBox}>
-            <ActivityIndicator size="large" color="#0f172a" />
-            <Text style={styles.loadingText}>Connecting to weighbridge scale...</Text>
-          </View>
-        ) : (
-          <FlatList
-            data={filteredSlips}
-            keyExtractor={(item) => item.id}
-            renderItem={renderItem}
-            contentContainerStyle={styles.list}
+        {/* ===================== PAGE 1: DASHBOARD ===================== */}
+        {currentPage === "dashboard" && (
+          <ScrollView
+            style={styles.pageContent}
+            contentContainerStyle={{ paddingBottom: 90 }}
             refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor="#0f172a"
-              />
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#0f172a" />
             }
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyTitle}>No Weighments Found</Text>
-                <Text style={styles.emptyText}>
-                  {searchQuery
-                    ? `No slips match "${searchQuery}"`
-                    : "No weighments logged in this category yet."}
+          >
+            {/* KPI Strip */}
+            <View style={styles.kpiContainer}>
+              <TouchableOpacity
+                style={styles.kpiCard}
+                activeOpacity={0.8}
+                onPress={() => setCurrentPage("item_report")}
+              >
+                <Text style={styles.kpiLabel}>TOTAL DISPATCH</Text>
+                <Text style={styles.kpiValue}>
+                  {stats.netWeightQtl} <Text style={styles.kpiUnit}>QTL</Text>
                 </Text>
-                {searchQuery.length > 0 && (
-                  <TouchableOpacity
-                    style={styles.resetButton}
-                    onPress={() => setSearchQuery("")}
-                  >
-                    <Text style={styles.resetButtonText}>Clear Search</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            }
-          />
+                <Text style={styles.kpiSub}>~{stats.netWeightMT} Tonnes →</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.kpiCard, styles.kpiCardClickable]}
+                activeOpacity={0.8}
+                onPress={() => setCurrentPage("completed")}
+              >
+                <Text style={styles.kpiLabel}>COMPLETED</Text>
+                <Text style={[styles.kpiValue, { color: "#059669" }]}>
+                  {stats.completedCount}
+                </Text>
+                <Text style={styles.kpiSub}>View Vehicles →</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.kpiCard, styles.kpiCardClickable, { borderColor: "#fde68a" }]}
+                activeOpacity={0.8}
+                onPress={() => setCurrentPage("pending")}
+              >
+                <Text style={styles.kpiLabel}>IN-PLANT</Text>
+                <Text style={[styles.kpiValue, { color: "#d97706" }]}>
+                  {stats.inPlantCount}
+                </Text>
+                <Text style={styles.kpiSub}>1st Wt Pending →</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Quick Navigation Cards */}
+            <View style={styles.quickNavSection}>
+              <Text style={styles.sectionHeading}>OPERATIONAL MODULES</Text>
+
+              <TouchableOpacity
+                style={styles.navActionCard}
+                activeOpacity={0.8}
+                onPress={() => setCurrentPage("pending")}
+              >
+                <View style={[styles.navActionIconBox, { backgroundColor: "#fffbeb" }]}>
+                  <Text style={styles.navActionIcon}>⏳</Text>
+                </View>
+                <View style={styles.navActionTextCol}>
+                  <Text style={styles.navActionTitle}>Pending Weighments Queue</Text>
+                  <Text style={styles.navActionDesc}>
+                    {stats.inPlantCount} vehicles in plant awaiting 2nd weight deduction
+                  </Text>
+                </View>
+                <Text style={styles.navActionBadgeAmber}>{stats.inPlantCount} Active</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.navActionCard}
+                activeOpacity={0.8}
+                onPress={() => setCurrentPage("completed")}
+              >
+                <View style={[styles.navActionIconBox, { backgroundColor: "#ecfdf5" }]}>
+                  <Text style={styles.navActionIcon}>✅</Text>
+                </View>
+                <View style={styles.navActionTextCol}>
+                  <Text style={styles.navActionTitle}>Completed Vehicle Manifest</Text>
+                  <Text style={styles.navActionDesc}>
+                    {stats.completedCount} vehicles dispatched with {stats.netWeightQtl} QTL net material
+                  </Text>
+                </View>
+                <Text style={styles.navActionBadgeGreen}>{stats.completedCount} Slips</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.navActionCard}
+                activeOpacity={0.8}
+                onPress={() => setCurrentPage("item_report")}
+              >
+                <View style={[styles.navActionIconBox, { backgroundColor: "#eff6ff" }]}>
+                  <Text style={styles.navActionIcon}>📦</Text>
+                </View>
+                <View style={styles.navActionTextCol}>
+                  <Text style={styles.navActionTitle}>Material-Wise Net Weight Report</Text>
+                  <Text style={styles.navActionDesc}>
+                    Select item to view total net dispatched weight and total vehicles
+                  </Text>
+                </View>
+                <Text style={styles.navActionBadgeBlue}>{distinctMaterials.length - 1} Grades</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Recent Slips Stream */}
+            <View style={styles.recentSection}>
+              <Text style={styles.sectionHeading}>RECENT SCALE FEEDS</Text>
+              {slips.slice(0, 5).map(renderWeighmentCard)}
+            </View>
+          </ScrollView>
         )}
+
+        {/* ===================== PAGE 2: PENDING WEIGHMENTS ===================== */}
+        {currentPage === "pending" && (
+          <View style={styles.pageContainer}>
+            {/* Search */}
+            <View style={styles.searchContainer}>
+              <Text style={styles.searchIcon}>🔍</Text>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search pending vehicle number, party, slip..."
+                placeholderTextColor="#94a3b8"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                clearButtonMode="while-editing"
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery("")} style={styles.clearBtn}>
+                  <Text style={styles.clearBtnText}>✕</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* List */}
+            <FlatList
+              data={pendingSlips}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => renderWeighmentCard(item)}
+              contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 110 }}
+              refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#0f172a" />
+              }
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyTitle}>No Pending Vehicles</Text>
+                  <Text style={styles.emptyText}>
+                    All vehicles have completed their 2nd weighment.
+                  </Text>
+                </View>
+              }
+            />
+
+            {/* AT LAST: SUMMARY FOOTER FOR PENDING VEHICLES */}
+            <View style={styles.bottomSummaryBarAmber}>
+              <View style={styles.summaryBarRow}>
+                <View>
+                  <Text style={styles.summaryBarLabelAmber}>TOTAL PENDING VEHICLES</Text>
+                  <Text style={styles.summaryBarSubAmber}>Awaiting 2nd Weight in Plant</Text>
+                </View>
+                <View style={styles.summaryBarValueBadgeAmber}>
+                  <Text style={styles.summaryBarCountAmber}>{pendingSlips.length}</Text>
+                  <Text style={styles.summaryBarUnitAmber}>VEHICLES</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* ===================== PAGE 3: COMPLETED WEIGHMENTS ===================== */}
+        {currentPage === "completed" && (
+          <View style={styles.pageContainer}>
+            {/* Search */}
+            <View style={styles.searchContainer}>
+              <Text style={styles.searchIcon}>🔍</Text>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search completed vehicle number, party, slip..."
+                placeholderTextColor="#94a3b8"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                clearButtonMode="while-editing"
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery("")} style={styles.clearBtn}>
+                  <Text style={styles.clearBtnText}>✕</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* List */}
+            <FlatList
+              data={completedSlips}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => renderWeighmentCard(item)}
+              contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 125 }}
+              refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#0f172a" />
+              }
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyTitle}>No Completed Slips</Text>
+                  <Text style={styles.emptyText}>
+                    No completed weighment slips found matching your search.
+                  </Text>
+                </View>
+              }
+            />
+
+            {/* AT LAST: SUMMARY FOOTER FOR COMPLETED VEHICLES (VEHICLE COUNT + TOTAL NET WEIGHT) */}
+            <View style={styles.bottomSummaryBarGreen}>
+              <View style={styles.summaryBarDualRow}>
+                <View style={styles.summaryDualCol}>
+                  <Text style={styles.summaryBarLabelGreen}>TOTAL VEHICLES</Text>
+                  <Text style={styles.summaryBarCountGreen}>
+                    {completedSlips.length} <Text style={{ fontSize: 11, fontWeight: "600" }}>Vehicles</Text>
+                  </Text>
+                </View>
+
+                <View style={styles.summaryDividerVert} />
+
+                <View style={[styles.summaryDualCol, { alignItems: "flex-end" }]}>
+                  <Text style={styles.summaryBarLabelGreen}>TOTAL NET WEIGHT</Text>
+                  <Text style={styles.summaryBarCountGreen}>
+                    {completedTotalNetWeight.toFixed(2)} <Text style={{ fontSize: 11, fontWeight: "600" }}>QTL</Text>
+                  </Text>
+                  <Text style={styles.summaryBarSubGreen}>
+                    {(completedTotalNetWeight / 10).toFixed(2)} Metric Tonnes
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* ===================== PAGE 4: ITEM-WISE REPORT ===================== */}
+        {currentPage === "item_report" && (
+          <View style={styles.pageContainer}>
+            {/* Horizontal Item Selector Chips */}
+            <View style={styles.itemSelectorContainer}>
+              <Text style={styles.itemSelectorLabel}>SELECT MATERIAL GRADE:</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.itemChipsScroll}
+              >
+                {distinctMaterials.map((mat) => {
+                  const isSelected = selectedItemName === mat;
+                  return (
+                    <TouchableOpacity
+                      key={mat}
+                      onPress={() => setSelectedItemName(mat)}
+                      style={[
+                        styles.itemChip,
+                        isSelected ? styles.itemChipActive : styles.itemChipInactive,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.itemChipText,
+                          isSelected ? styles.itemChipTextActive : styles.itemChipTextInactive,
+                        ]}
+                      >
+                        {mat}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            {/* Search within this item */}
+            <View style={[styles.searchContainer, { marginTop: 6 }]}>
+              <Text style={styles.searchIcon}>🔍</Text>
+              <TextInput
+                style={styles.searchInput}
+                placeholder={`Search vehicles carrying ${selectedItemName}...`}
+                placeholderTextColor="#94a3b8"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                clearButtonMode="while-editing"
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery("")} style={styles.clearBtn}>
+                  <Text style={styles.clearBtnText}>✕</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* List of vehicles with the selected item */}
+            <FlatList
+              data={itemWiseSlips}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => renderWeighmentCard(item)}
+              contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 135 }}
+              refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#0f172a" />
+              }
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyTitle}>No Records Found</Text>
+                  <Text style={styles.emptyText}>
+                    No vehicles found for material &ldquo;{selectedItemName}&rdquo;.
+                  </Text>
+                </View>
+              }
+            />
+
+            {/* AT LAST: SUMMARY FOOTER FOR SELECTED ITEM (TOTAL VEHICLES + TOTAL NET WEIGHT) */}
+            <View style={styles.bottomSummaryBarBlue}>
+              <View style={styles.itemSummaryHeaderRow}>
+                <Text style={styles.itemSummaryTitle} numberOfLines={1}>
+                  MATERIAL: {selectedItemName.toUpperCase()}
+                </Text>
+              </View>
+
+              <View style={styles.summaryBarDualRow}>
+                <View style={styles.summaryDualCol}>
+                  <Text style={styles.summaryBarLabelBlue}>TOTAL VEHICLES</Text>
+                  <Text style={styles.summaryBarCountBlue}>
+                    {itemWiseStats.totalVehicles}{" "}
+                    <Text style={{ fontSize: 11, fontWeight: "600" }}>Vehicles</Text>
+                  </Text>
+                  <Text style={styles.summaryBarSubBlue}>
+                    {itemWiseStats.completedVehicles} Complete · {itemWiseStats.inPlantVehicles} In-Plant
+                  </Text>
+                </View>
+
+                <View style={styles.summaryDividerVertBlue} />
+
+                <View style={[styles.summaryDualCol, { alignItems: "flex-end" }]}>
+                  <Text style={styles.summaryBarLabelBlue}>TOTAL NET WEIGHT</Text>
+                  <Text style={styles.summaryBarCountBlue}>
+                    {itemWiseStats.totalNetWeightQtl}{" "}
+                    <Text style={{ fontSize: 11, fontWeight: "600" }}>QTL</Text>
+                  </Text>
+                  <Text style={styles.summaryBarSubBlue}>
+                    = {itemWiseStats.totalNetWeightMT} Metric Tonnes
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
+      </View>
+
+      {/* Global Bottom Navigation Bar */}
+      <View style={styles.bottomNavBar}>
+        <TouchableOpacity
+          style={styles.navTab}
+          onPress={() => {
+            setSearchQuery("");
+            setCurrentPage("dashboard");
+          }}
+        >
+          <Text style={[styles.navTabIcon, currentPage === "dashboard" && styles.navTabIconActive]}>
+            🏠
+          </Text>
+          <Text
+            style={[styles.navTabLabel, currentPage === "dashboard" && styles.navTabLabelActive]}
+          >
+            Dashboard
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.navTab}
+          onPress={() => {
+            setSearchQuery("");
+            setCurrentPage("pending");
+          }}
+        >
+          <View style={styles.tabIconWrapper}>
+            <Text style={[styles.navTabIcon, currentPage === "pending" && styles.navTabIconActive]}>
+              ⏳
+            </Text>
+            {stats.inPlantCount > 0 && (
+              <View style={styles.tabBadgeAmber}>
+                <Text style={styles.tabBadgeText}>{stats.inPlantCount}</Text>
+              </View>
+            )}
+          </View>
+          <Text
+            style={[styles.navTabLabel, currentPage === "pending" && styles.navTabLabelActive]}
+          >
+            Pending
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.navTab}
+          onPress={() => {
+            setSearchQuery("");
+            setCurrentPage("completed");
+          }}
+        >
+          <View style={styles.tabIconWrapper}>
+            <Text style={[styles.navTabIcon, currentPage === "completed" && styles.navTabIconActive]}>
+              ✅
+            </Text>
+            {stats.completedCount > 0 && (
+              <View style={styles.tabBadgeGreen}>
+                <Text style={styles.tabBadgeText}>{stats.completedCount}</Text>
+              </View>
+            )}
+          </View>
+          <Text
+            style={[styles.navTabLabel, currentPage === "completed" && styles.navTabLabelActive]}
+          >
+            Completed
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.navTab}
+          onPress={() => {
+            setSearchQuery("");
+            setCurrentPage("item_report");
+          }}
+        >
+          <Text style={[styles.navTabIcon, currentPage === "item_report" && styles.navTabIconActive]}>
+            📦
+          </Text>
+          <Text
+            style={[styles.navTabLabel, currentPage === "item_report" && styles.navTabLabelActive]}
+          >
+            Item Report
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* Digital Weighbridge Slip Modal */}
@@ -475,7 +865,6 @@ export default function App() {
 
             {selectedSlip && (
               <ScrollView style={styles.modalBody}>
-                {/* Printable Slip Ticket */}
                 <View style={styles.slipTicket}>
                   <View style={styles.ticketHeader}>
                     <Text style={styles.ticketPlantName}>SHREE BALAJI CRUSHER</Text>
@@ -521,7 +910,6 @@ export default function App() {
 
                   <View style={styles.ticketDivider} />
 
-                  {/* Weights Box */}
                   <View style={styles.ticketWeightBox}>
                     <View style={styles.weightLine}>
                       <Text style={styles.weightLabelLine}>Gross Weight:</Text>
@@ -553,12 +941,9 @@ export default function App() {
                     )}
                   </View>
 
-                  {/* Rate / Amount if available */}
                   {selectedSlip.rate && selectedSlip.rate > 0 && selectedSlip.isComplete && (
                     <View style={styles.amountBox}>
-                      <Text style={styles.amountLabel}>
-                        Rate: ₹{selectedSlip.rate} / QTL
-                      </Text>
+                      <Text style={styles.amountLabel}>Rate: ₹{selectedSlip.rate} / QTL</Text>
                       <Text style={styles.amountVal}>
                         Amount: ₹{(selectedSlip.netWeight * selectedSlip.rate).toFixed(0)}
                       </Text>
@@ -596,7 +981,7 @@ export default function App() {
         </View>
       </Modal>
 
-      {/* API Endpoint Configuration Modal */}
+      {/* Scale Server Settings Modal */}
       <Modal
         visible={isSettingsOpen}
         transparent
@@ -610,7 +995,6 @@ export default function App() {
               Select a quick preset or enter your weighbridge server URL:
             </Text>
 
-            {/* Quick Presets */}
             <View style={styles.presetsRow}>
               <TouchableOpacity
                 style={styles.presetChip}
@@ -680,9 +1064,9 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: "#0f172a",
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === "android" ? 40 : 16,
-    paddingBottom: 16,
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === "android" ? 38 : 12,
+    paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: "#1e293b",
   },
@@ -690,6 +1074,22 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+  },
+  backButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  backButtonArrow: {
+    color: "#60a5fa",
+    fontSize: 16,
+    marginRight: 4,
+    fontWeight: "bold",
+  },
+  backButtonText: {
+    color: "#93c5fd",
+    fontSize: 12,
+    fontWeight: "600",
   },
   brandSubtitle: {
     fontSize: 10,
@@ -700,9 +1100,9 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     color: "#ffffff",
-    fontSize: 22,
+    fontSize: 19,
     fontWeight: "800",
-    letterSpacing: -0.4,
+    letterSpacing: -0.3,
   },
   settingsButton: {
     padding: 8,
@@ -721,9 +1121,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(245, 158, 11, 0.3)",
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 5,
     borderRadius: 6,
-    marginTop: 10,
+    marginTop: 8,
   },
   offlineLeft: {
     flexDirection: "row",
@@ -751,6 +1151,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f8fafc",
   },
+  pageContent: {
+    flex: 1,
+  },
+  pageContainer: {
+    flex: 1,
+  },
   kpiContainer: {
     flexDirection: "row",
     paddingHorizontal: 16,
@@ -771,6 +1177,9 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 1,
   },
+  kpiCardClickable: {
+    borderWidth: 1.5,
+  },
   kpiLabel: {
     fontSize: 9,
     fontWeight: "700",
@@ -790,20 +1199,105 @@ const styles = StyleSheet.create({
   },
   kpiSub: {
     fontSize: 10,
-    color: "#94a3b8",
+    color: "#2563eb",
     marginTop: 1,
+    fontWeight: "600",
+  },
+  quickNavSection: {
+    paddingHorizontal: 16,
+    marginTop: 12,
+  },
+  sectionHeading: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#64748b",
+    letterSpacing: 0.8,
+    marginBottom: 8,
+  },
+  navActionCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  navActionIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  navActionIcon: {
+    fontSize: 18,
+  },
+  navActionTextCol: {
+    flex: 1,
+  },
+  navActionTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+  navActionDesc: {
+    fontSize: 11,
+    color: "#64748b",
+    marginTop: 2,
+  },
+  navActionBadgeAmber: {
+    backgroundColor: "#fef3c7",
+    color: "#92400e",
+    fontSize: 10,
+    fontWeight: "700",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginLeft: 6,
+  },
+  navActionBadgeGreen: {
+    backgroundColor: "#d1fae5",
+    color: "#065f46",
+    fontSize: 10,
+    fontWeight: "700",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginLeft: 6,
+  },
+  navActionBadgeBlue: {
+    backgroundColor: "#dbeafe",
+    color: "#1e40af",
+    fontSize: 10,
+    fontWeight: "700",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginLeft: 6,
+  },
+  recentSection: {
+    paddingHorizontal: 16,
+    marginTop: 14,
   },
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#ffffff",
     marginHorizontal: 16,
-    marginTop: 6,
+    marginTop: 10,
     paddingHorizontal: 12,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "#cbd5e1",
-    height: 42,
+    height: 40,
   },
   searchIcon: {
     fontSize: 14,
@@ -811,7 +1305,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 13,
     color: "#0f172a",
   },
   clearBtn: {
@@ -822,45 +1316,48 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "bold",
   },
-  filterPills: {
-    flexDirection: "row",
+  itemSelectorContainer: {
     paddingHorizontal: 16,
-    marginTop: 10,
-    marginBottom: 8,
-    gap: 8,
+    paddingTop: 10,
   },
-  pill: {
+  itemSelectorLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#64748b",
+    letterSpacing: 0.8,
+    marginBottom: 6,
+  },
+  itemChipsScroll: {
+    gap: 6,
+    paddingBottom: 4,
+  },
+  itemChip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
     borderWidth: 1,
   },
-  pillActive: {
+  itemChipActive: {
     backgroundColor: "#0f172a",
     borderColor: "#0f172a",
   },
-  pillInactive: {
+  itemChipInactive: {
     backgroundColor: "#ffffff",
     borderColor: "#cbd5e1",
   },
-  pillText: {
+  itemChipText: {
     fontSize: 12,
     fontWeight: "600",
   },
-  pillTextActive: {
+  itemChipTextActive: {
     color: "#ffffff",
   },
-  pillTextInactive: {
+  itemChipTextInactive: {
     color: "#475569",
-  },
-  list: {
-    paddingHorizontal: 16,
-    paddingTop: 6,
-    paddingBottom: 24,
   },
   card: {
     backgroundColor: "#ffffff",
-    padding: 14,
+    padding: 13,
     borderRadius: 10,
     marginBottom: 10,
     borderWidth: 1,
@@ -918,7 +1415,7 @@ const styles = StyleSheet.create({
     color: "#92400e",
   },
   partyName: {
-    fontSize: 15,
+    fontSize: 14,
     color: "#1e293b",
     fontWeight: "700",
     marginBottom: 8,
@@ -945,9 +1442,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
   },
   itemTag: {
-    fontSize: 12,
+    fontSize: 11,
     color: "#475569",
-    fontWeight: "500",
+    fontWeight: "600",
     backgroundColor: "#f8fafc",
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -964,15 +1461,14 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   weightLabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "700",
     color: "#64748b",
     letterSpacing: 0.5,
   },
   weightValue: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "800",
-    color: "#059669",
     marginTop: 2,
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
   },
@@ -987,23 +1483,12 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#334155",
   },
-  loadingBox: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 40,
-  },
-  loadingText: {
-    marginTop: 12,
-    color: "#64748b",
-    fontSize: 13,
-  },
   emptyContainer: {
     padding: 32,
     alignItems: "center",
   },
   emptyTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "700",
     color: "#334155",
     marginBottom: 4,
@@ -1013,18 +1498,223 @@ const styles = StyleSheet.create({
     color: "#64748b",
     textAlign: "center",
   },
-  resetButton: {
-    marginTop: 12,
-    paddingHorizontal: 14,
+  // SUMMARY FOOTERS (AT LAST)
+  bottomSummaryBarAmber: {
+    position: "absolute",
+    bottom: 56,
+    left: 0,
+    right: 0,
+    backgroundColor: "#fef3c7",
+    borderTopWidth: 2,
+    borderTopColor: "#f59e0b",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  summaryBarRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  summaryBarLabelAmber: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#92400e",
+    letterSpacing: 0.5,
+  },
+  summaryBarSubAmber: {
+    fontSize: 10,
+    color: "#b45309",
+    marginTop: 1,
+  },
+  summaryBarValueBadgeAmber: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    backgroundColor: "#fde68a",
+    paddingHorizontal: 12,
     paddingVertical: 6,
-    backgroundColor: "#0f172a",
-    borderRadius: 6,
+    borderRadius: 8,
+    gap: 4,
   },
-  resetButtonText: {
-    color: "#ffffff",
-    fontSize: 12,
+  summaryBarCountAmber: {
+    fontSize: 20,
+    fontWeight: "900",
+    color: "#78350f",
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+  },
+  summaryBarUnitAmber: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#92400e",
+  },
+  bottomSummaryBarGreen: {
+    position: "absolute",
+    bottom: 56,
+    left: 0,
+    right: 0,
+    backgroundColor: "#ecfdf5",
+    borderTopWidth: 2,
+    borderTopColor: "#10b981",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  summaryBarDualRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  summaryDualCol: {
+    flex: 1,
+  },
+  summaryDividerVert: {
+    width: 1,
+    height: 36,
+    backgroundColor: "#a7f3d0",
+    marginHorizontal: 12,
+  },
+  summaryBarLabelGreen: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#065f46",
+    letterSpacing: 0.5,
+  },
+  summaryBarCountGreen: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#047857",
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    marginTop: 1,
+  },
+  summaryBarSubGreen: {
+    fontSize: 10,
+    color: "#065f46",
+    marginTop: 1,
+  },
+  bottomSummaryBarBlue: {
+    position: "absolute",
+    bottom: 56,
+    left: 0,
+    right: 0,
+    backgroundColor: "#eff6ff",
+    borderTopWidth: 2,
+    borderTopColor: "#3b82f6",
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  itemSummaryHeaderRow: {
+    borderBottomWidth: 1,
+    borderBottomColor: "#bfdbfe",
+    paddingBottom: 4,
+    marginBottom: 6,
+  },
+  itemSummaryTitle: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#1e40af",
+    letterSpacing: 0.5,
+  },
+  summaryDividerVertBlue: {
+    width: 1,
+    height: 36,
+    backgroundColor: "#bfdbfe",
+    marginHorizontal: 12,
+  },
+  summaryBarLabelBlue: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#1e40af",
+    letterSpacing: 0.5,
+  },
+  summaryBarCountBlue: {
+    fontSize: 17,
+    fontWeight: "900",
+    color: "#1d4ed8",
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    marginTop: 1,
+  },
+  summaryBarSubBlue: {
+    fontSize: 10,
+    color: "#2563eb",
+    marginTop: 1,
+  },
+  // BOTTOM NAVIGATION BAR
+  bottomNavBar: {
+    flexDirection: "row",
+    height: 56,
+    backgroundColor: "#ffffff",
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+    alignItems: "center",
+    justifyContent: "space-around",
+  },
+  navTab: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 6,
+  },
+  tabIconWrapper: {
+    position: "relative",
+  },
+  navTabIcon: {
+    fontSize: 18,
+    opacity: 0.6,
+  },
+  navTabIconActive: {
+    opacity: 1,
+  },
+  navTabLabel: {
+    fontSize: 10,
     fontWeight: "600",
+    color: "#64748b",
+    marginTop: 2,
   },
+  navTabLabelActive: {
+    color: "#0f172a",
+    fontWeight: "800",
+  },
+  tabBadgeAmber: {
+    position: "absolute",
+    top: -4,
+    right: -10,
+    backgroundColor: "#d97706",
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    minWidth: 14,
+    alignItems: "center",
+  },
+  tabBadgeGreen: {
+    position: "absolute",
+    top: -4,
+    right: -10,
+    backgroundColor: "#059669",
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    minWidth: 14,
+    alignItems: "center",
+  },
+  tabBadgeText: {
+    color: "#ffffff",
+    fontSize: 8,
+    fontWeight: "800",
+  },
+  // MODAL
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(15, 23, 42, 0.6)",
