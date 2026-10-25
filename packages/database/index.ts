@@ -1,5 +1,11 @@
 // Database client with resilient in-memory fallback for development and offline operation
-import { PrismaClient as BasePrismaClient } from '@prisma/client';
+let BasePrismaClient: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  BasePrismaClient = require('@prisma/client')?.PrismaClient;
+} catch {
+  // Prisma Client not generated yet locally; resilient fallback store will handle operations
+}
 
 export type WeighmentRecord = {
   id: string;
@@ -319,4 +325,3 @@ if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
 
-export * from '@prisma/client';

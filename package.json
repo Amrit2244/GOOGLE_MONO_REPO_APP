@@ -13,6 +13,8 @@
     "dev:all": "turbo run dev",
     "dev:web": "pnpm --filter web dev",
     "dev:mobile": "pnpm --filter mobile start",
+    "db:generate": "pnpm --filter @repo/database db:generate",
+    "db:push": "pnpm --filter @repo/database db:push",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types"
