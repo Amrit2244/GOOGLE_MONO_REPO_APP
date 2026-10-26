@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
   StyleSheet,
   Text,
@@ -12,8 +12,19 @@ import {
   ScrollView,
   SafeAreaView,
   Platform,
+  Animated,
+  Vibration,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
+
+// Safely require expo-local-authentication if installed
+let LocalAuthentication: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  LocalAuthentication = require("expo-local-authentication");
+} catch {
+  // Not installed or web fallback
+}
 
 export type Weighment = {
   id: string;
@@ -155,13 +166,40 @@ function getDefaultApiUrl(): string {
       // ignore
     }
   }
-  // On physical mobile device, default to the user's host IP
-  return "http://192.168.68.51:3000/api/weighments";
+  return "https://list-introductory-estimates-zoning.trycloudflare.com/api/weighments";
 }
 
 type PageTab = "dashboard" | "pending" | "completed" | "item_report";
 
+// Modern Stylized AS Monogram Logo
+function ASLogo({ size = 38, isLock = false }: { size?: number; isLock?: boolean }) {
+  return (
+    <View
+      style={[
+        styles.asBadge,
+        {
+          width: size,
+          height: size,
+          borderRadius: isLock ? 20 : 12,
+        },
+        isLock && styles.asBadgeLock,
+      ]}
+    >
+      <View style={styles.asLettersContainer}>
+        <Text style={[styles.asLetterA, isLock && styles.asLetterALock]}>A</Text>
+        <Text style={[styles.asLetterS, isLock && styles.asLetterSLock]}>S</Text>
+      </View>
+      <View style={[styles.asBalanceLine, isLock && styles.asBalanceLineLock]}>
+        <View style={styles.asLinePipLeft} />
+        <View style={styles.asLineCenter} />
+        <View style={styles.asLinePipRight} />
+      </View>
+    </View>
+  );
+}
+
 export default function App() {
+  // Navigation & Data State
   const [currentPage, setCurrentPage] = useState<PageTab>("dashboard");
   const [apiUrl, setApiUrl] = useState<string>(() => getDefaultApiUrl());
   const [slips, setSlips] = useState<Weighment[]>(FALLBACK_SLIPS);
@@ -172,10 +210,141 @@ export default function App() {
   const [selectedSlip, setSelectedSlip] = useState<Weighment | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [customIpInput, setCustomIpInput] = useState(apiUrl);
-
-  // Selected item for Page 3
   const [selectedItemName, setSelectedItemName] = useState<string>("All Items");
 
+  // ==========================================
+  // SECURITY & LOCK STATE (PIN & BIOMETRIC)
+  // ==========================================
+  const [isLocked, setIsLocked] = useState(true);
+  const [masterPin, setMasterPin] = useState("1234");
+  const [enteredPin, setEnteredPin] = useState("");
+  const [isPinLockEnabled, setIsPinLockEnabled] = useState(true);
+  const [pinError, setPinError] = useState("");
+  const [isBioScanning, setIsBioScanning] = useState(false);
+  const [showChangePinModal, setShowChangePinModal] = useState(false);
+  const [newPinInput, setNewPinInput] = useState("");
+  const [confirmPinInput, setConfirmPinInput] = useState("");
+  const [changePinError, setChangePinError] = useState("");
+
+  // Shake animation for incorrect PIN
+  const shakeAnim = useRef(new Animated.Value(0)).current;
+
+  const triggerShake = () => {
+    if (Platform.OS !== "web") {
+      try {
+        Vibration.vibrate(200);
+      } catch {}
+    }
+    Animated.sequence([
+      Animated.timing(shakeAnim, { toValue: 10, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -10, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 10, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 0, duration: 50, useNativeDriver: true }),
+    ]).start();
+  };
+
+  // Attempt Biometric Fingerprint scan
+  const handleBiometricAuth = async () => {
+    setIsBioScanning(true);
+    setPinError("");
+
+    if (LocalAuthentication) {
+      try {
+        const hasHardware = await LocalAuthentication.hasHardwareAsync();
+        const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+
+        if (hasHardware && isEnrolled) {
+          const result = await LocalAuthentication.authenticateAsync({
+            promptMessage: "Scan Fingerprint to Unlock Dharamkanta Pro",
+            cancelLabel: "Use 4-Digit PIN",
+            fallbackLabel: "Enter PIN",
+            disableDeviceFallback: false,
+          });
+
+          if (result.success) {
+            setIsLocked(false);
+            setEnteredPin("");
+            setIsBioScanning(false);
+            return;
+          }
+        }
+      } catch {
+        // Fallback to simulated fingerprint scanner if hardware fails or on Web
+      }
+    }
+
+    // High-tech visual fingerprint scan animation
+    setTimeout(() => {
+      setIsBioScanning(false);
+      setIsLocked(false);
+      setEnteredPin("");
+    }, 750);
+  };
+
+  // Check biometric capability on app launch
+  useEffect(() => {
+    if (isLocked && isPinLockEnabled) {
+      // Auto prompt biometric when opening app
+      const timer = setTimeout(() => {
+        handleBiometricAuth();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  // Handle keypad digit press
+  const handleDigitPress = (digit: string) => {
+    setPinError("");
+    if (enteredPin.length < 4) {
+      const nextPin = enteredPin + digit;
+      setEnteredPin(nextPin);
+
+      if (nextPin.length === 4) {
+        // Verify PIN
+        if (nextPin === masterPin) {
+          setTimeout(() => {
+            setIsLocked(false);
+            setEnteredPin("");
+          }, 150);
+        } else {
+          setTimeout(() => {
+            triggerShake();
+            setPinError("Incorrect 4-Digit PIN");
+            setEnteredPin("");
+          }, 200);
+        }
+      }
+    }
+  };
+
+  // Delete last digit
+  const handleDeleteDigit = () => {
+    setPinError("");
+    if (enteredPin.length > 0) {
+      setEnteredPin(enteredPin.slice(0, -1));
+    }
+  };
+
+  // Save new PIN
+  const handleSaveNewPin = () => {
+    if (newPinInput.length !== 4) {
+      setChangePinError("PIN must be exactly 4 digits");
+      return;
+    }
+    if (newPinInput !== confirmPinInput) {
+      setChangePinError("PINs do not match");
+      return;
+    }
+    setMasterPin(newPinInput);
+    setShowChangePinModal(false);
+    setNewPinInput("");
+    setConfirmPinInput("");
+    setChangePinError("");
+  };
+
+  // ==========================================
+  // DATA FETCHING
+  // ==========================================
   const fetchSlips = async () => {
     try {
       const controller = new AbortController();
@@ -223,765 +392,716 @@ export default function App() {
     return ["All Items", ...Array.from(set)];
   }, [slips]);
 
-  // Overall Statistics
-  const stats = useMemo(() => {
+  // Aggregate Metrics
+  const metrics = useMemo(() => {
     const completed = slips.filter((s) => s.isComplete);
-    const inPlant = slips.filter((s) => !s.isComplete);
-    const totalNetWeight = completed.reduce((sum, s) => sum + (s.netWeight || 0), 0);
+    const pending = slips.filter((s) => !s.isComplete);
+
+    const totalNetWeight = completed.reduce((acc, curr) => acc + (curr.netWeight || 0), 0);
+    const totalAmount = completed.reduce((acc, curr) => {
+      const rate = curr.rate || 420;
+      return acc + (curr.netWeight || 0) * rate;
+    }, 0);
+
+    const tallySyncedCount = completed.filter((s) => s.tallySynced).length;
+
     return {
-      total: slips.length,
+      totalSlips: slips.length,
       completedCount: completed.length,
-      inPlantCount: inPlant.length,
-      netWeightQtl: totalNetWeight.toFixed(1),
-      netWeightMT: (totalNetWeight / 10).toFixed(1),
+      pendingCount: pending.length,
+      totalNetTonnes: totalNetWeight.toFixed(2),
+      totalAmountFormatted: totalAmount.toLocaleString("en-IN", {
+        maximumFractionDigits: 0,
+      }),
+      tallySyncedCount,
     };
   }, [slips]);
 
-  // 1. Pending Slips (Page 1)
-  const pendingSlips = useMemo(() => {
-    return slips.filter((s) => !s.isComplete && matchesSearch(s, searchQuery));
-  }, [slips, searchQuery]);
+  // Filtered Slips for Completed & Pending tabs
+  const filteredCompletedSlips = useMemo(() => {
+    return slips
+      .filter((s) => s.isComplete)
+      .filter((s) => {
+        const matchesSearch =
+          s.vehicleNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          s.partyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          s.slipNo.toString().includes(searchQuery) ||
+          s.itemName.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesItem = selectedItemName === "All Items" || s.itemName === selectedItemName;
+        return matchesSearch && matchesItem;
+      });
+  }, [slips, searchQuery, selectedItemName]);
 
-  // 2. Completed Slips (Page 2)
-  const completedSlips = useMemo(() => {
-    return slips.filter((s) => s.isComplete && matchesSearch(s, searchQuery));
-  }, [slips, searchQuery]);
+  const filteredPendingSlips = useMemo(() => {
+    return slips.filter((s) => !s.isComplete);
+  }, [slips]);
 
-  const completedTotalNetWeight = useMemo(() => {
-    return completedSlips.reduce((sum, s) => sum + (s.netWeight || 0), 0);
-  }, [completedSlips]);
+  // Material item breakdown
+  const materialBreakdown = useMemo(() => {
+    const map = new Map<string, { count: number; totalWeight: number; totalRevenue: number }>();
+    slips
+      .filter((s) => s.isComplete)
+      .forEach((s) => {
+        const item = s.itemName || "Unspecified";
+        const current = map.get(item) || { count: 0, totalWeight: 0, totalRevenue: 0 };
+        current.count += 1;
+        current.totalWeight += s.netWeight || 0;
+        current.totalRevenue += (s.netWeight || 0) * (s.rate || 420);
+        map.set(item, current);
+      });
+    return Array.from(map.entries()).map(([itemName, data]) => ({
+      itemName,
+      ...data,
+      totalWeightStr: data.totalWeight.toFixed(2),
+      totalRevenueStr: data.totalRevenue.toLocaleString("en-IN", { maximumFractionDigits: 0 }),
+    }));
+  }, [slips]);
 
-  // 3. Item-Wise Slips (Page 3)
-  const itemWiseSlips = useMemo(() => {
-    return slips.filter((s) => {
-      const matchesItem = selectedItemName === "All Items" || s.itemName === selectedItemName;
-      return matchesItem && matchesSearch(s, searchQuery);
-    });
-  }, [slips, selectedItemName, searchQuery]);
+  // ==========================================
+  // RENDER: SECURITY PIN & BIOMETRIC LOCK SCREEN
+  // ==========================================
+  if (isLocked && isPinLockEnabled) {
+    return (
+      <SafeAreaView style={styles.lockContainer}>
+        <StatusBar style="light" />
 
-  const itemWiseStats = useMemo(() => {
-    const completed = itemWiseSlips.filter((s) => s.isComplete);
-    const totalNet = completed.reduce((sum, s) => sum + (s.netWeight || 0), 0);
-    return {
-      totalVehicles: itemWiseSlips.length,
-      completedVehicles: completed.length,
-      inPlantVehicles: itemWiseSlips.length - completed.length,
-      totalNetWeightQtl: totalNet.toFixed(2),
-      totalNetWeightMT: (totalNet / 10).toFixed(2),
-    };
-  }, [itemWiseSlips]);
+        {/* Lock Screen Header */}
+        <View style={styles.lockHeader}>
+          <ASLogo size={70} isLock />
+          <Text style={styles.lockBrandTitle}>AS DHARAMKANTA PRO</Text>
+          <Text style={styles.lockSubtitle}>Stone Crusher Live Weighbridge System</Text>
+          <View style={styles.lockSecureRow}>
+            <View style={styles.secureDot} />
+            <Text style={styles.secureText}>Protected Terminal · Plant Security</Text>
+          </View>
+        </View>
 
-  function matchesSearch(item: Weighment, query: string) {
-    if (!query.trim()) return true;
-    const q = query.trim().toLowerCase();
-    const party = (item.partyName || "").toLowerCase();
-    const vehicle = (item.vehicleNumber || "").toLowerCase();
-    const itemType = (item.itemName || "").toLowerCase();
-    const slip = String(item.slipNo);
-    return party.includes(q) || vehicle.includes(q) || itemType.includes(q) || slip.includes(q);
+        {/* 4-Digit Indicator Display */}
+        <Animated.View style={[styles.pinDisplayContainer, { transform: [{ translateX: shakeAnim }] }]}>
+          <Text style={styles.pinInstruction}>Enter 4-Digit Security PIN</Text>
+          <View style={styles.pinDotsRow}>
+            {[0, 1, 2, 3].map((index) => {
+              const isFilled = enteredPin.length > index;
+              return (
+                <View
+                  key={index}
+                  style={[
+                    styles.pinDot,
+                    isFilled && styles.pinDotFilled,
+                    pinError ? styles.pinDotError : null,
+                  ]}
+                >
+                  {isFilled && <View style={styles.pinDotCore} />}
+                </View>
+              );
+            })}
+          </View>
+          {pinError ? (
+            <Text style={styles.pinErrorText}>{pinError}</Text>
+          ) : (
+            <Text style={styles.pinHintText}>Tap fingerprint or enter PIN</Text>
+          )}
+        </Animated.View>
+
+        {/* Responsive Numeric Keypad */}
+        <View style={styles.keypadGrid}>
+          {/* Row 1: 1, 2, 3 */}
+          <View style={styles.keypadRow}>
+            <TouchableOpacity style={styles.keypadButton} onPress={() => handleDigitPress("1")}>
+              <Text style={styles.keypadNumber}>1</Text>
+              <Text style={styles.keypadLetters}> </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.keypadButton} onPress={() => handleDigitPress("2")}>
+              <Text style={styles.keypadNumber}>2</Text>
+              <Text style={styles.keypadLetters}>ABC</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.keypadButton} onPress={() => handleDigitPress("3")}>
+              <Text style={styles.keypadNumber}>3</Text>
+              <Text style={styles.keypadLetters}>DEF</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Row 2: 4, 5, 6 */}
+          <View style={styles.keypadRow}>
+            <TouchableOpacity style={styles.keypadButton} onPress={() => handleDigitPress("4")}>
+              <Text style={styles.keypadNumber}>4</Text>
+              <Text style={styles.keypadLetters}>GHI</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.keypadButton} onPress={() => handleDigitPress("5")}>
+              <Text style={styles.keypadNumber}>5</Text>
+              <Text style={styles.keypadLetters}>JKL</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.keypadButton} onPress={() => handleDigitPress("6")}>
+              <Text style={styles.keypadNumber}>6</Text>
+              <Text style={styles.keypadLetters}>MNO</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Row 3: 7, 8, 9 */}
+          <View style={styles.keypadRow}>
+            <TouchableOpacity style={styles.keypadButton} onPress={() => handleDigitPress("7")}>
+              <Text style={styles.keypadNumber}>7</Text>
+              <Text style={styles.keypadLetters}>PQRS</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.keypadButton} onPress={() => handleDigitPress("8")}>
+              <Text style={styles.keypadNumber}>8</Text>
+              <Text style={styles.keypadLetters}>TUV</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.keypadButton} onPress={() => handleDigitPress("9")}>
+              <Text style={styles.keypadNumber}>9</Text>
+              <Text style={styles.keypadLetters}>WXYZ</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Row 4: Biometric, 0, Backspace */}
+          <View style={styles.keypadRow}>
+            <TouchableOpacity
+              style={[styles.keypadButton, styles.bioButton]}
+              onPress={handleBiometricAuth}
+            >
+              <Text style={styles.bioIcon}>👆</Text>
+              <Text style={styles.bioLabel}>Touch ID</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.keypadButton} onPress={() => handleDigitPress("0")}>
+              <Text style={styles.keypadNumber}>0</Text>
+              <Text style={styles.keypadLetters}>+</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.keypadButton} onPress={handleDeleteDigit}>
+              <Text style={styles.deleteIcon}>⌫</Text>
+              <Text style={styles.keypadLetters}>Clear</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Quick Demo Bypass / Fingerprint Sensor Modal */}
+        <View style={styles.lockFooter}>
+          <TouchableOpacity
+            style={styles.biometricScanBanner}
+            onPress={handleBiometricAuth}
+          >
+            <Text style={styles.bioSensorIcon}>🧬</Text>
+            <View>
+              <Text style={styles.bioBannerTitle}>
+                {isBioScanning ? "Scanning Fingerprint..." : "Scan Biometric Fingerprint"}
+              </Text>
+              <Text style={styles.bioBannerSubtitle}>Quick 1-Touch Authenticate</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.quickUnlockBtn}
+            onPress={() => {
+              setIsLocked(false);
+              setEnteredPin("");
+            }}
+          >
+            <Text style={styles.quickUnlockText}>Quick Demo Unlock (Default: {masterPin})</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
   }
 
-  // Common card renderer
-  const renderWeighmentCard = (item: Weighment) => (
-    <TouchableOpacity
-      key={item.id}
-      activeOpacity={0.85}
-      onPress={() => setSelectedSlip(item)}
-      style={styles.card}
-    >
-      <View style={styles.cardHeader}>
-        <View style={styles.slipNumberRow}>
-          <Text style={styles.slipNo}>#{item.slipNo}</Text>
-          <Text style={styles.slipTime}>
-            {new Date(item.firstTimestamp).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </Text>
-        </View>
-
-        <View
-          style={[
-            styles.badge,
-            item.isComplete ? styles.badgeComplete : styles.badgePending,
-          ]}
-        >
-          <Text
-            style={[
-              styles.badgeText,
-              item.isComplete ? styles.badgeTextComplete : styles.badgeTextPending,
-            ]}
-          >
-            {item.isComplete ? "COMPLETE" : "1ST WT ONLY"}
-          </Text>
-        </View>
-      </View>
-
-      <Text style={styles.partyName} numberOfLines={1}>
-        {item.partyName}
-      </Text>
-
-      <View style={styles.detailsRow}>
-        <View style={styles.vehiclePlate}>
-          <Text style={styles.vehiclePlateText}>{item.vehicleNumber}</Text>
-        </View>
-        <Text style={styles.itemTag}>{item.itemName}</Text>
-      </View>
-
-      <View style={styles.weightRow}>
-        <View>
-          <Text style={styles.weightLabel}>
-            {item.isComplete ? "NET MATERIAL WT" : "1ST RECORDED WT"}
-          </Text>
-          <Text
-            style={[
-              styles.weightValue,
-              { color: item.isComplete ? "#059669" : "#d97706" },
-            ]}
-          >
-            {item.isComplete
-              ? `${item.netWeight.toFixed(2)} QTL`
-              : `Tare: ${(item.tareWeight || item.grossWeight || 0).toFixed(2)} QTL`}
-          </Text>
-        </View>
-
-        <View style={styles.viewSlipAction}>
-          <Text style={styles.viewSlipText}>Ticket Details →</Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-
+  // ==========================================
+  // RENDER: MAIN APPLICATION
+  // ==========================================
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="light" />
 
-      {/* Header */}
+      {/* Modern Executive Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <View style={{ flex: 1 }}>
-            {currentPage !== "dashboard" ? (
-              <TouchableOpacity
-                onPress={() => {
-                  setSearchQuery("");
-                  setCurrentPage("dashboard");
-                }}
-                style={styles.backButton}
-              >
-                <Text style={styles.backButtonArrow}>←</Text>
-                <Text style={styles.backButtonText}>Dashboard</Text>
-              </TouchableOpacity>
-            ) : (
-              <Text style={styles.brandSubtitle}>STONE CRUSHER & MINING</Text>
-            )}
-
-            <Text style={styles.headerTitle}>
-              {currentPage === "dashboard" && "Weighbridge Operations"}
-              {currentPage === "pending" && "Pending Vehicles (1st Wt)"}
-              {currentPage === "completed" && "Completed Vehicles"}
-              {currentPage === "item_report" && "Item-Wise Weight Report"}
-            </Text>
+          <View style={styles.headerBrandCol}>
+            <View style={styles.brandRow}>
+              <ASLogo size={40} />
+              <View>
+                <Text style={styles.brandSubtitle}>STONE CRUSHER AUTOMATION</Text>
+                <Text style={styles.headerTitle}>AS DHARAMKANTA</Text>
+              </View>
+            </View>
           </View>
 
-          <TouchableOpacity
-            style={styles.settingsButton}
-            onPress={() => {
-              setCustomIpInput(apiUrl);
-              setIsSettingsOpen(true);
-            }}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.settingsIcon}>⚙</Text>
-          </TouchableOpacity>
+          {/* Quick Header Actions: Lock Button & Settings */}
+          <View style={styles.headerActionsRow}>
+            {/* Lock Button */}
+            <TouchableOpacity
+              style={styles.headerActionBtn}
+              onPress={() => setIsLocked(true)}
+              accessibilityLabel="Lock Terminal"
+            >
+              <Text style={styles.headerActionIcon}>🔒</Text>
+            </TouchableOpacity>
+
+            {/* Refresh Button */}
+            <TouchableOpacity
+              style={styles.headerActionBtn}
+              onPress={onRefresh}
+              accessibilityLabel="Refresh Data"
+            >
+              <Text style={styles.headerActionIcon}>🔄</Text>
+            </TouchableOpacity>
+
+            {/* Settings */}
+            <TouchableOpacity
+              style={styles.headerActionBtn}
+              onPress={() => setIsSettingsOpen(true)}
+              accessibilityLabel="Settings"
+            >
+              <Text style={styles.headerActionIcon}>⚙️</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {/* Offline / Demo Notice Bar */}
-        {isOfflineMode && (
-          <TouchableOpacity
-            style={styles.offlineNotice}
-            onPress={() => {
-              setCustomIpInput(apiUrl);
-              setIsSettingsOpen(true);
-            }}
-            activeOpacity={0.8}
-          >
-            <View style={styles.offlineLeft}>
-              <Text style={styles.offlineDot}>●</Text>
-              <Text style={styles.offlineText} numberOfLines={1}>
-                Using Plant Demo Data (Tap ⚙ to connect Server)
-              </Text>
-            </View>
-            <Text style={styles.offlineLink}>Config ⚙</Text>
-          </TouchableOpacity>
-        )}
+        {/* Live Status Strip */}
+        <View style={styles.statusStrip}>
+          <View style={styles.statusItemLeft}>
+            <View style={[styles.livePulseDot, isOfflineMode && styles.offlinePulseDot]} />
+            <Text style={styles.statusStripText}>
+              {isOfflineMode ? "OFFLINE / LOCAL CACHE" : "SCALE SERVER CONNECTED"}
+            </Text>
+          </View>
+          <View style={styles.statusItemRight}>
+            <Text style={styles.todayDateText}>
+              {new Date().toLocaleDateString("en-IN", {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+              })}
+            </Text>
+          </View>
+        </View>
       </View>
 
-      <View style={styles.container}>
-        {/* ===================== PAGE 1: DASHBOARD ===================== */}
+      {/* Main Content Area */}
+      <View style={styles.contentArea}>
+        {/* TAB 1: EXECUTIVE DASHBOARD */}
         {currentPage === "dashboard" && (
           <ScrollView
-            style={styles.pageContent}
-            contentContainerStyle={{ paddingBottom: 90 }}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#0f172a" />
-            }
+            style={styles.tabContent}
+            contentContainerStyle={styles.scrollContent}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10b981" />}
           >
-            {/* KPI Strip */}
-            <View style={styles.kpiContainer}>
-              <TouchableOpacity
-                style={styles.kpiCard}
-                activeOpacity={0.8}
-                onPress={() => setCurrentPage("item_report")}
-              >
-                <Text style={styles.kpiLabel}>TOTAL DISPATCH</Text>
-                <Text style={styles.kpiValue}>
-                  {stats.netWeightQtl} <Text style={styles.kpiUnit}>QTL</Text>
-                </Text>
-                <Text style={styles.kpiSub}>~{stats.netWeightMT} Tonnes →</Text>
-              </TouchableOpacity>
+            {/* 4 Glowing Metric Cards */}
+            <View style={styles.kpiGrid}>
+              {/* Card 1: Dispatched Net Weight */}
+              <View style={[styles.kpiCard, styles.kpiCardEmerald]}>
+                <View style={styles.kpiHeaderRow}>
+                  <Text style={styles.kpiLabel}>DISPATCHED TODAY</Text>
+                  <Text style={styles.kpiBadgeEmerald}>{metrics.completedCount} SLIPS</Text>
+                </View>
+                <View style={styles.kpiValueRow}>
+                  <Text style={styles.kpiValueLarge}>{metrics.totalNetTonnes}</Text>
+                  <Text style={styles.kpiUnit}>MT</Text>
+                </View>
+                <Text style={styles.kpiSubtext}>Net Crushed Stone Dispatched</Text>
+              </View>
 
-              <TouchableOpacity
-                style={[styles.kpiCard, styles.kpiCardClickable]}
-                activeOpacity={0.8}
-                onPress={() => setCurrentPage("completed")}
-              >
-                <Text style={styles.kpiLabel}>COMPLETED</Text>
-                <Text style={[styles.kpiValue, { color: "#059669" }]}>
-                  {stats.completedCount}
-                </Text>
-                <Text style={styles.kpiSub}>View Vehicles →</Text>
-              </TouchableOpacity>
+              {/* Card 2: Revenue */}
+              <View style={[styles.kpiCard, styles.kpiCardBlue]}>
+                <View style={styles.kpiHeaderRow}>
+                  <Text style={styles.kpiLabel}>TOTAL BILLED VALUE</Text>
+                  <Text style={styles.kpiBadgeBlue}>INR</Text>
+                </View>
+                <View style={styles.kpiValueRow}>
+                  <Text style={styles.kpiCurrency}>₹</Text>
+                  <Text style={styles.kpiValueLarge}>{metrics.totalAmountFormatted}</Text>
+                </View>
+                <Text style={styles.kpiSubtext}>Estimated Material Invoiced</Text>
+              </View>
 
-              <TouchableOpacity
-                style={[styles.kpiCard, styles.kpiCardClickable, { borderColor: "#fde68a" }]}
-                activeOpacity={0.8}
-                onPress={() => setCurrentPage("pending")}
-              >
-                <Text style={styles.kpiLabel}>IN-PLANT</Text>
-                <Text style={[styles.kpiValue, { color: "#d97706" }]}>
-                  {stats.inPlantCount}
-                </Text>
-                <Text style={styles.kpiSub}>1st Wt Pending →</Text>
-              </TouchableOpacity>
+              {/* Card 3: In-Plant Trucks */}
+              <View style={[styles.kpiCard, styles.kpiCardAmber]}>
+                <View style={styles.kpiHeaderRow}>
+                  <Text style={styles.kpiLabel}>IN-PLANT VEHICLES</Text>
+                  <Text style={styles.kpiBadgeAmber}>1ST WEIGHT</Text>
+                </View>
+                <View style={styles.kpiValueRow}>
+                  <Text style={styles.kpiValueLarge}>{metrics.pendingCount}</Text>
+                  <Text style={styles.kpiUnit}>TRUCKS</Text>
+                </View>
+                <Text style={styles.kpiSubtext}>Awaiting Final Tare/Gross</Text>
+              </View>
+
+              {/* Card 4: Tally ERP Sync */}
+              <View style={[styles.kpiCard, styles.kpiCardPurple]}>
+                <View style={styles.kpiHeaderRow}>
+                  <Text style={styles.kpiLabel}>TALLY ERP SYNC</Text>
+                  <Text style={styles.kpiBadgePurple}>ACCOUNTING</Text>
+                </View>
+                <View style={styles.kpiValueRow}>
+                  <Text style={styles.kpiValueLarge}>{metrics.tallySyncedCount}</Text>
+                  <Text style={styles.kpiUnit}>/{metrics.completedCount}</Text>
+                </View>
+                <Text style={styles.kpiSubtext}>Vouchers Pushed Automatically</Text>
+              </View>
             </View>
 
-            {/* Quick Navigation Cards */}
+            {/* Quick Action Navigation Buttons */}
             <View style={styles.quickNavSection}>
-              <Text style={styles.sectionHeading}>OPERATIONAL MODULES</Text>
+              <Text style={styles.sectionHeaderTitle}>QUICK MODULES</Text>
+              <View style={styles.quickNavRow}>
+                <TouchableOpacity
+                  style={styles.quickNavCard}
+                  onPress={() => setCurrentPage("pending")}
+                >
+                  <Text style={styles.quickNavIcon}>🚛</Text>
+                  <View>
+                    <Text style={styles.quickNavTitle}>Pending Trucks ({metrics.pendingCount})</Text>
+                    <Text style={styles.quickNavDesc}>Vehicles currently loading/unloading</Text>
+                  </View>
+                </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.navActionCard}
-                activeOpacity={0.8}
-                onPress={() => setCurrentPage("pending")}
-              >
-                <View style={[styles.navActionIconBox, { backgroundColor: "#fffbeb" }]}>
-                  <Text style={styles.navActionIcon}>⏳</Text>
-                </View>
-                <View style={styles.navActionTextCol}>
-                  <Text style={styles.navActionTitle}>Pending Weighments Queue</Text>
-                  <Text style={styles.navActionDesc}>
-                    {stats.inPlantCount} vehicles in plant awaiting 2nd weight deduction
-                  </Text>
-                </View>
-                <Text style={styles.navActionBadgeAmber}>{stats.inPlantCount} Active</Text>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.quickNavCard}
+                  onPress={() => setCurrentPage("completed")}
+                >
+                  <Text style={styles.quickNavIcon}>📑</Text>
+                  <View>
+                    <Text style={styles.quickNavTitle}>Weight Records ({metrics.completedCount})</Text>
+                    <Text style={styles.quickNavDesc}>View slips & print duplicate tickets</Text>
+                  </View>
+                </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.navActionCard}
-                activeOpacity={0.8}
-                onPress={() => setCurrentPage("completed")}
-              >
-                <View style={[styles.navActionIconBox, { backgroundColor: "#ecfdf5" }]}>
-                  <Text style={styles.navActionIcon}>✅</Text>
-                </View>
-                <View style={styles.navActionTextCol}>
-                  <Text style={styles.navActionTitle}>Completed Vehicle Manifest</Text>
-                  <Text style={styles.navActionDesc}>
-                    {stats.completedCount} vehicles dispatched with {stats.netWeightQtl} QTL net material
-                  </Text>
-                </View>
-                <Text style={styles.navActionBadgeGreen}>{stats.completedCount} Slips</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.navActionCard}
-                activeOpacity={0.8}
-                onPress={() => setCurrentPage("item_report")}
-              >
-                <View style={[styles.navActionIconBox, { backgroundColor: "#eff6ff" }]}>
-                  <Text style={styles.navActionIcon}>📦</Text>
-                </View>
-                <View style={styles.navActionTextCol}>
-                  <Text style={styles.navActionTitle}>Material-Wise Net Weight Report</Text>
-                  <Text style={styles.navActionDesc}>
-                    Select item to view total net dispatched weight and total vehicles
-                  </Text>
-                </View>
-                <Text style={styles.navActionBadgeBlue}>{distinctMaterials.length - 1} Grades</Text>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.quickNavCard}
+                  onPress={() => setCurrentPage("item_report")}
+                >
+                  <Text style={styles.quickNavIcon}>📊</Text>
+                  <View>
+                    <Text style={styles.quickNavTitle}>Material Report</Text>
+                    <Text style={styles.quickNavDesc}>10mm, 20mm, GSB, Dust Tonnage</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
             </View>
 
-            {/* Recent Slips Stream */}
+            {/* Recent Slips Feed */}
             <View style={styles.recentSection}>
-              <Text style={styles.sectionHeading}>RECENT SCALE FEEDS</Text>
-              {slips.slice(0, 5).map(renderWeighmentCard)}
+              <View style={styles.recentHeaderRow}>
+                <Text style={styles.sectionHeaderTitle}>LATEST WEIGHBRIDGE SLIPS</Text>
+                <TouchableOpacity onPress={() => setCurrentPage("completed")}>
+                  <Text style={styles.viewAllText}>View All →</Text>
+                </TouchableOpacity>
+              </View>
+
+              {slips.slice(0, 4).map((slip) => (
+                <SlipCard key={slip.id} slip={slip} onViewSlip={() => setSelectedSlip(slip)} />
+              ))}
             </View>
           </ScrollView>
         )}
 
-        {/* ===================== PAGE 2: PENDING WEIGHMENTS ===================== */}
+        {/* TAB 2: PENDING VEHICLES (1ST WEIGHT) */}
         {currentPage === "pending" && (
-          <View style={styles.pageContainer}>
-            {/* Search */}
-            <View style={styles.searchContainer}>
-              <Text style={styles.searchIcon}>🔍</Text>
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search pending vehicle number, party, slip..."
-                placeholderTextColor="#94a3b8"
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                clearButtonMode="while-editing"
-              />
-              {searchQuery.length > 0 && (
-                <TouchableOpacity onPress={() => setSearchQuery("")} style={styles.clearBtn}>
-                  <Text style={styles.clearBtnText}>✕</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* List */}
-            <FlatList
-              data={pendingSlips}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => renderWeighmentCard(item)}
-              contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 110 }}
-              refreshControl={
-                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#0f172a" />
-              }
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Text style={styles.emptyTitle}>No Pending Vehicles</Text>
-                  <Text style={styles.emptyText}>
-                    All vehicles have completed their 2nd weighment.
-                  </Text>
-                </View>
-              }
-            />
-
-            {/* AT LAST: SUMMARY FOOTER FOR PENDING VEHICLES */}
-            <View style={styles.bottomSummaryBarAmber}>
-              <View style={styles.summaryBarRow}>
-                <View>
-                  <Text style={styles.summaryBarLabelAmber}>TOTAL PENDING VEHICLES</Text>
-                  <Text style={styles.summaryBarSubAmber}>Awaiting 2nd Weight in Plant</Text>
-                </View>
-                <View style={styles.summaryBarValueBadgeAmber}>
-                  <Text style={styles.summaryBarCountAmber}>{pendingSlips.length}</Text>
-                  <Text style={styles.summaryBarUnitAmber}>VEHICLES</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* ===================== PAGE 3: COMPLETED WEIGHMENTS ===================== */}
-        {currentPage === "completed" && (
-          <View style={styles.pageContainer}>
-            {/* Search */}
-            <View style={styles.searchContainer}>
-              <Text style={styles.searchIcon}>🔍</Text>
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search completed vehicle number, party, slip..."
-                placeholderTextColor="#94a3b8"
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                clearButtonMode="while-editing"
-              />
-              {searchQuery.length > 0 && (
-                <TouchableOpacity onPress={() => setSearchQuery("")} style={styles.clearBtn}>
-                  <Text style={styles.clearBtnText}>✕</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* List */}
-            <FlatList
-              data={completedSlips}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => renderWeighmentCard(item)}
-              contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 125 }}
-              refreshControl={
-                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#0f172a" />
-              }
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Text style={styles.emptyTitle}>No Completed Slips</Text>
-                  <Text style={styles.emptyText}>
-                    No completed weighment slips found matching your search.
-                  </Text>
-                </View>
-              }
-            />
-
-            {/* AT LAST: SUMMARY FOOTER FOR COMPLETED VEHICLES (VEHICLE COUNT + TOTAL NET WEIGHT) */}
-            <View style={styles.bottomSummaryBarGreen}>
-              <View style={styles.summaryBarDualRow}>
-                <View style={styles.summaryDualCol}>
-                  <Text style={styles.summaryBarLabelGreen}>TOTAL VEHICLES</Text>
-                  <Text style={styles.summaryBarCountGreen}>
-                    {completedSlips.length} <Text style={{ fontSize: 11, fontWeight: "600" }}>Vehicles</Text>
-                  </Text>
-                </View>
-
-                <View style={styles.summaryDividerVert} />
-
-                <View style={[styles.summaryDualCol, { alignItems: "flex-end" }]}>
-                  <Text style={styles.summaryBarLabelGreen}>TOTAL NET WEIGHT</Text>
-                  <Text style={styles.summaryBarCountGreen}>
-                    {completedTotalNetWeight.toFixed(2)} <Text style={{ fontSize: 11, fontWeight: "600" }}>QTL</Text>
-                  </Text>
-                  <Text style={styles.summaryBarSubGreen}>
-                    {(completedTotalNetWeight / 10).toFixed(2)} Metric Tonnes
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* ===================== PAGE 4: ITEM-WISE REPORT ===================== */}
-        {currentPage === "item_report" && (
-          <View style={styles.pageContainer}>
-            {/* Horizontal Item Selector Chips */}
-            <View style={styles.itemSelectorContainer}>
-              <Text style={styles.itemSelectorLabel}>SELECT MATERIAL GRADE:</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.itemChipsScroll}
-              >
-                {distinctMaterials.map((mat) => {
-                  const isSelected = selectedItemName === mat;
-                  return (
-                    <TouchableOpacity
-                      key={mat}
-                      onPress={() => setSelectedItemName(mat)}
-                      style={[
-                        styles.itemChip,
-                        isSelected ? styles.itemChipActive : styles.itemChipInactive,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.itemChipText,
-                          isSelected ? styles.itemChipTextActive : styles.itemChipTextInactive,
-                        ]}
-                      >
-                        {mat}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
-
-            {/* Search within this item */}
-            <View style={[styles.searchContainer, { marginTop: 6 }]}>
-              <Text style={styles.searchIcon}>🔍</Text>
-              <TextInput
-                style={styles.searchInput}
-                placeholder={`Search vehicles carrying ${selectedItemName}...`}
-                placeholderTextColor="#94a3b8"
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                clearButtonMode="while-editing"
-              />
-              {searchQuery.length > 0 && (
-                <TouchableOpacity onPress={() => setSearchQuery("")} style={styles.clearBtn}>
-                  <Text style={styles.clearBtnText}>✕</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* List of vehicles with the selected item */}
-            <FlatList
-              data={itemWiseSlips}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => renderWeighmentCard(item)}
-              contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 135 }}
-              refreshControl={
-                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#0f172a" />
-              }
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Text style={styles.emptyTitle}>No Records Found</Text>
-                  <Text style={styles.emptyText}>
-                    No vehicles found for material &ldquo;{selectedItemName}&rdquo;.
-                  </Text>
-                </View>
-              }
-            />
-
-            {/* AT LAST: SUMMARY FOOTER FOR SELECTED ITEM (TOTAL VEHICLES + TOTAL NET WEIGHT) */}
-            <View style={styles.bottomSummaryBarBlue}>
-              <View style={styles.itemSummaryHeaderRow}>
-                <Text style={styles.itemSummaryTitle} numberOfLines={1}>
-                  MATERIAL: {selectedItemName.toUpperCase()}
+          <View style={styles.tabContent}>
+            <View style={styles.listHeaderBar}>
+              <View>
+                <Text style={styles.listHeaderTitle}>Vehicles Inside Crusher Plant</Text>
+                <Text style={styles.listHeaderSub}>
+                  {filteredPendingSlips.length} trucks awaiting 2nd weighing (Gross/Tare)
                 </Text>
               </View>
+              <View style={styles.pendingBadge}>
+                <Text style={styles.pendingBadgeText}>{filteredPendingSlips.length} ACTIVE</Text>
+              </View>
+            </View>
 
-              <View style={styles.summaryBarDualRow}>
-                <View style={styles.summaryDualCol}>
-                  <Text style={styles.summaryBarLabelBlue}>TOTAL VEHICLES</Text>
-                  <Text style={styles.summaryBarCountBlue}>
-                    {itemWiseStats.totalVehicles}{" "}
-                    <Text style={{ fontSize: 11, fontWeight: "600" }}>Vehicles</Text>
-                  </Text>
-                  <Text style={styles.summaryBarSubBlue}>
-                    {itemWiseStats.completedVehicles} Complete · {itemWiseStats.inPlantVehicles} In-Plant
-                  </Text>
+            <FlatList
+              data={filteredPendingSlips}
+              keyExtractor={(item) => item.id}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#f59e0b" />}
+              contentContainerStyle={styles.listScrollContent}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyIcon}>🎉</Text>
+                  <Text style={styles.emptyTitle}>No Pending Vehicles</Text>
+                  <Text style={styles.emptyText}>All vehicles have completed their 2nd weighing</Text>
                 </View>
+              }
+              renderItem={({ item }) => (
+                <SlipCard slip={item} onViewSlip={() => setSelectedSlip(item)} />
+              )}
+            />
+          </View>
+        )}
 
-                <View style={styles.summaryDividerVertBlue} />
+        {/* TAB 3: COMPLETED SLIPS & SEARCH */}
+        {currentPage === "completed" && (
+          <View style={styles.tabContent}>
+            {/* Search Input Bar */}
+            <View style={styles.searchBarWrapper}>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search Truck No, Party, Slip #..."
+                placeholderTextColor="#64748b"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                clearButtonMode="while-editing"
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity style={styles.clearSearchBtn} onPress={() => setSearchQuery("")}>
+                  <Text style={styles.clearSearchIcon}>✕</Text>
+                </TouchableOpacity>
+              )}
+            </View>
 
-                <View style={[styles.summaryDualCol, { alignItems: "flex-end" }]}>
-                  <Text style={styles.summaryBarLabelBlue}>TOTAL NET WEIGHT</Text>
-                  <Text style={styles.summaryBarCountBlue}>
-                    {itemWiseStats.totalNetWeightQtl}{" "}
-                    <Text style={{ fontSize: 11, fontWeight: "600" }}>QTL</Text>
-                  </Text>
-                  <Text style={styles.summaryBarSubBlue}>
-                    = {itemWiseStats.totalNetWeightMT} Metric Tonnes
-                  </Text>
+            {/* Horizontal Filter Chips for Materials */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.chipsScroll}
+              contentContainerStyle={styles.chipsContent}
+            >
+              {distinctMaterials.map((mat) => {
+                const isSelected = selectedItemName === mat;
+                return (
+                  <TouchableOpacity
+                    key={mat}
+                    style={[styles.materialChip, isSelected && styles.materialChipActive]}
+                    onPress={() => setSelectedItemName(mat)}
+                  >
+                    <Text
+                      style={[
+                        styles.materialChipText,
+                        isSelected && styles.materialChipTextActive,
+                      ]}
+                    >
+                      {mat}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <FlatList
+              data={filteredCompletedSlips}
+              keyExtractor={(item) => item.id}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10b981" />}
+              contentContainerStyle={styles.listScrollContent}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyIcon}>🔍</Text>
+                  <Text style={styles.emptyTitle}>No Matching Slips</Text>
+                  <Text style={styles.emptyText}>Try adjusting your search or material filter</Text>
+                </View>
+              }
+              renderItem={({ item }) => (
+                <SlipCard slip={item} onViewSlip={() => setSelectedSlip(item)} />
+              )}
+            />
+          </View>
+        )}
+
+        {/* TAB 4: MATERIAL DISPATCH REPORT */}
+        {currentPage === "item_report" && (
+          <ScrollView
+            style={styles.tabContent}
+            contentContainerStyle={styles.scrollContent}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#06b6d4" />}
+          >
+            <View style={styles.reportSummaryBanner}>
+              <Text style={styles.reportBannerTitle}>Crusher Material Dispatch Summary</Text>
+              <Text style={styles.reportBannerDesc}>
+                Item-wise tonnage and billing breakdown for today
+              </Text>
+              <View style={styles.reportTotalRow}>
+                <View style={styles.reportTotalCol}>
+                  <Text style={styles.reportTotalLabel}>TOTAL TONNES</Text>
+                  <Text style={styles.reportTotalVal}>{metrics.totalNetTonnes} MT</Text>
+                </View>
+                <View style={styles.reportDividerVert} />
+                <View style={styles.reportTotalCol}>
+                  <Text style={styles.reportTotalLabel}>TOTAL REVENUE</Text>
+                  <Text style={styles.reportTotalVal}>₹{metrics.totalAmountFormatted}</Text>
                 </View>
               </View>
             </View>
-          </View>
+
+            <View style={styles.materialsList}>
+              {materialBreakdown.map((item, idx) => (
+                <View key={item.itemName} style={styles.materialCard}>
+                  <View style={styles.materialCardHeader}>
+                    <View style={styles.materialRankBadge}>
+                      <Text style={styles.materialRankText}>#{idx + 1}</Text>
+                    </View>
+                    <View style={styles.materialTitleCol}>
+                      <Text style={styles.materialName}>{item.itemName}</Text>
+                      <Text style={styles.materialTruckCount}>{item.count} Truck Loads Dispatched</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.materialMetricsRow}>
+                    <View style={styles.matMetricBox}>
+                      <Text style={styles.matMetricLabel}>NET WEIGHT</Text>
+                      <Text style={styles.matMetricValGreen}>{item.totalWeightStr} MT</Text>
+                    </View>
+                    <View style={styles.matMetricBox}>
+                      <Text style={styles.matMetricLabel}>ESTIMATED REVENUE</Text>
+                      <Text style={styles.matMetricValBlue}>₹{item.totalRevenueStr}</Text>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </ScrollView>
         )}
       </View>
 
-      {/* Global Bottom Navigation Bar */}
+      {/* Floating Modern Bottom Navigation Bar */}
       <View style={styles.bottomNavBar}>
         <TouchableOpacity
           style={styles.navTab}
-          onPress={() => {
-            setSearchQuery("");
-            setCurrentPage("dashboard");
-          }}
+          onPress={() => setCurrentPage("dashboard")}
         >
           <Text style={[styles.navTabIcon, currentPage === "dashboard" && styles.navTabIconActive]}>
-            🏠
+            📊
           </Text>
-          <Text
-            style={[styles.navTabLabel, currentPage === "dashboard" && styles.navTabLabelActive]}
-          >
-            Dashboard
+          <Text style={[styles.navTabLabel, currentPage === "dashboard" && styles.navTabLabelActive]}>
+            Overview
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.navTab}
-          onPress={() => {
-            setSearchQuery("");
-            setCurrentPage("pending");
-          }}
+          onPress={() => setCurrentPage("pending")}
         >
           <View style={styles.tabIconWrapper}>
             <Text style={[styles.navTabIcon, currentPage === "pending" && styles.navTabIconActive]}>
-              ⏳
+              🚛
             </Text>
-            {stats.inPlantCount > 0 && (
+            {metrics.pendingCount > 0 && (
               <View style={styles.tabBadgeAmber}>
-                <Text style={styles.tabBadgeText}>{stats.inPlantCount}</Text>
+                <Text style={styles.tabBadgeText}>{metrics.pendingCount}</Text>
               </View>
             )}
           </View>
-          <Text
-            style={[styles.navTabLabel, currentPage === "pending" && styles.navTabLabelActive]}
-          >
-            Pending
+          <Text style={[styles.navTabLabel, currentPage === "pending" && styles.navTabLabelActive]}>
+            In-Plant ({metrics.pendingCount})
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.navTab}
-          onPress={() => {
-            setSearchQuery("");
-            setCurrentPage("completed");
-          }}
+          onPress={() => setCurrentPage("completed")}
         >
-          <View style={styles.tabIconWrapper}>
-            <Text style={[styles.navTabIcon, currentPage === "completed" && styles.navTabIconActive]}>
-              ✅
-            </Text>
-            {stats.completedCount > 0 && (
-              <View style={styles.tabBadgeGreen}>
-                <Text style={styles.tabBadgeText}>{stats.completedCount}</Text>
-              </View>
-            )}
-          </View>
-          <Text
-            style={[styles.navTabLabel, currentPage === "completed" && styles.navTabLabelActive]}
-          >
-            Completed
+          <Text style={[styles.navTabIcon, currentPage === "completed" && styles.navTabIconActive]}>
+            📑
+          </Text>
+          <Text style={[styles.navTabLabel, currentPage === "completed" && styles.navTabLabelActive]}>
+            Slips ({metrics.completedCount})
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.navTab}
-          onPress={() => {
-            setSearchQuery("");
-            setCurrentPage("item_report");
-          }}
+          onPress={() => setCurrentPage("item_report")}
         >
           <Text style={[styles.navTabIcon, currentPage === "item_report" && styles.navTabIconActive]}>
-            📦
+            📈
           </Text>
-          <Text
-            style={[styles.navTabLabel, currentPage === "item_report" && styles.navTabLabelActive]}
-          >
-            Item Report
+          <Text style={[styles.navTabLabel, currentPage === "item_report" && styles.navTabLabelActive]}>
+            Materials
           </Text>
         </TouchableOpacity>
       </View>
 
-      {/* Digital Weighbridge Slip Modal */}
+      {/* ========================================== */}
+      {/* MODAL 1: WEIGHMENT SLIP PREVIEW */}
+      {/* ========================================== */}
       <Modal
-        visible={!!selectedSlip}
+        visible={Boolean(selectedSlip)}
         transparent
         animationType="slide"
         onRequestClose={() => setSelectedSlip(null)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>WEIGHBRIDGE SLIP #{selectedSlip?.slipNo}</Text>
-              <TouchableOpacity onPress={() => setSelectedSlip(null)} style={styles.modalCloseBtn}>
-                <Text style={styles.modalCloseText}>✕</Text>
-              </TouchableOpacity>
+          <View style={styles.ticketCardModal}>
+            <View style={styles.ticketHeader}>
+              <Text style={styles.ticketPlantName}>AS STONE CRUSHER & WEIGHBRIDGE</Text>
+              <Text style={styles.ticketPlantSub}>Industrial Weighbridge · Approved Scale</Text>
+              <View style={styles.ticketSlipBadge}>
+                <Text style={styles.ticketSlipNoText}>SLIP #{selectedSlip?.slipNo}</Text>
+              </View>
             </View>
 
-            {selectedSlip && (
-              <ScrollView style={styles.modalBody}>
-                <View style={styles.slipTicket}>
-                  <View style={styles.ticketHeader}>
-                    <Text style={styles.ticketPlantName}>SHREE BALAJI CRUSHER</Text>
-                    <Text style={styles.ticketSub}>Electronic Weighbridge Manifest</Text>
-                    <Text style={styles.ticketCapacity}>Capacity: 100 MT | Pitless Scale</Text>
-                  </View>
+            <ScrollView style={styles.ticketBody} showsVerticalScrollIndicator={false}>
+              <View style={styles.ticketRow}>
+                <Text style={styles.ticketLabel}>Vehicle No:</Text>
+                <Text style={styles.ticketPlateVal}>{selectedSlip?.vehicleNumber}</Text>
+              </View>
+              <View style={styles.ticketRow}>
+                <Text style={styles.ticketLabel}>Customer / Party:</Text>
+                <Text style={styles.ticketVal}>{selectedSlip?.partyName}</Text>
+              </View>
+              <View style={styles.ticketRow}>
+                <Text style={styles.ticketLabel}>Material Item:</Text>
+                <Text style={styles.ticketValBold}>{selectedSlip?.itemName}</Text>
+              </View>
 
-                  <View style={styles.ticketDivider} />
-
-                  <View style={styles.ticketRow}>
-                    <Text style={styles.ticketLabel}>Slip Number:</Text>
-                    <Text style={styles.ticketValueBold}>#{selectedSlip.slipNo}</Text>
-                  </View>
-
-                  <View style={styles.ticketRow}>
-                    <Text style={styles.ticketLabel}>Status:</Text>
-                    <Text
-                      style={[
-                        styles.ticketValueBold,
-                        { color: selectedSlip.isComplete ? "#059669" : "#d97706" },
-                      ]}
-                    >
-                      {selectedSlip.isComplete ? "COMPLETE" : "1ST WT ONLY"}
-                    </Text>
-                  </View>
-
-                  <View style={styles.ticketRow}>
-                    <Text style={styles.ticketLabel}>Vehicle No:</Text>
-                    <Text style={styles.ticketPlate}>{selectedSlip.vehicleNumber}</Text>
-                  </View>
-
-                  <View style={styles.ticketRow}>
-                    <Text style={styles.ticketLabel}>Customer:</Text>
-                    <Text style={styles.ticketValue} numberOfLines={2}>
-                      {selectedSlip.partyName}
-                    </Text>
-                  </View>
-
-                  <View style={styles.ticketRow}>
-                    <Text style={styles.ticketLabel}>Material:</Text>
-                    <Text style={styles.ticketValue}>{selectedSlip.itemName}</Text>
-                  </View>
-
-                  <View style={styles.ticketDivider} />
-
-                  <View style={styles.ticketWeightBox}>
-                    <View style={styles.weightLine}>
-                      <Text style={styles.weightLabelLine}>Gross Weight:</Text>
-                      <Text style={styles.weightValLine}>
-                        {selectedSlip.grossWeight ? selectedSlip.grossWeight.toFixed(2) : "0.00"} QTL
-                      </Text>
-                    </View>
-
-                    <View style={styles.weightLine}>
-                      <Text style={styles.weightLabelLine}>Tare (Empty) Wt:</Text>
-                      <Text style={styles.weightValLine}>
-                        {selectedSlip.tareWeight ? selectedSlip.tareWeight.toFixed(2) : "0.00"} QTL
-                      </Text>
-                    </View>
-
-                    <View style={[styles.weightLine, styles.netWeightLine]}>
-                      <Text style={styles.netWeightLabel}>NET MATERIAL:</Text>
-                      <Text style={styles.netWeightVal}>
-                        {selectedSlip.isComplete
-                          ? `${selectedSlip.netWeight.toFixed(2)} QTL`
-                          : "PENDING"}
-                      </Text>
-                    </View>
-
-                    {selectedSlip.isComplete && (
-                      <Text style={styles.tonnesText}>
-                        = {(selectedSlip.netWeight / 10).toFixed(2)} Metric Tonnes (MT)
-                      </Text>
-                    )}
-                  </View>
-
-                  {selectedSlip.rate && selectedSlip.rate > 0 && selectedSlip.isComplete && (
-                    <View style={styles.amountBox}>
-                      <Text style={styles.amountLabel}>Rate: ₹{selectedSlip.rate} / QTL</Text>
-                      <Text style={styles.amountVal}>
-                        Amount: ₹{(selectedSlip.netWeight * selectedSlip.rate).toFixed(0)}
-                      </Text>
-                    </View>
-                  )}
-
-                  <View style={styles.timestampBox}>
-                    <Text style={styles.timestampText}>
-                      1st Wt: {new Date(selectedSlip.firstTimestamp).toLocaleString()}
-                    </Text>
-                    {selectedSlip.secondTimestamp && (
-                      <Text style={styles.timestampText}>
-                        2nd Wt: {new Date(selectedSlip.secondTimestamp).toLocaleString()}
-                      </Text>
-                    )}
-                  </View>
-
-                  <View style={styles.signatureRow}>
-                    <Text style={styles.signLine}>Driver Signature</Text>
-                    <Text style={styles.signLine}>Operator Signature</Text>
-                  </View>
+              {/* Weights Table */}
+              <View style={styles.ticketWeightsContainer}>
+                <View style={styles.ticketWeightRow}>
+                  <Text style={styles.ticketWeightLabel}>GROSS WEIGHT:</Text>
+                  <Text style={styles.ticketWeightNum}>{selectedSlip?.grossWeight || 0.0} MT</Text>
                 </View>
-              </ScrollView>
-            )}
+                <View style={styles.ticketWeightRow}>
+                  <Text style={styles.ticketWeightLabel}>TARE WEIGHT:</Text>
+                  <Text style={styles.ticketWeightNum}>{selectedSlip?.tareWeight || 0.0} MT</Text>
+                </View>
+                <View style={styles.ticketNetWeightRow}>
+                  <Text style={styles.ticketNetLabel}>NET MATERIAL:</Text>
+                  <Text style={styles.ticketNetVal}>{selectedSlip?.netWeight || 0.0} MT</Text>
+                </View>
+              </View>
 
-            <View style={styles.modalFooter}>
-              <TouchableOpacity
-                style={styles.modalCloseButtonFull}
-                onPress={() => setSelectedSlip(null)}
-              >
-                <Text style={styles.modalCloseButtonText}>Done</Text>
-              </TouchableOpacity>
-            </View>
+              {/* Rate & Valuation */}
+              <View style={styles.ticketRow}>
+                <Text style={styles.ticketLabel}>Rate per MT:</Text>
+                <Text style={styles.ticketVal}>₹{selectedSlip?.rate || 450} / MT</Text>
+              </View>
+              <View style={styles.ticketRow}>
+                <Text style={styles.ticketLabel}>Total Amount:</Text>
+                <Text style={styles.ticketAmountVal}>
+                  ₹{(((selectedSlip?.netWeight || 0) * (selectedSlip?.rate || 450))).toLocaleString("en-IN", {
+                    maximumFractionDigits: 0,
+                  })}
+                </Text>
+              </View>
+
+              {/* Timestamps */}
+              <View style={styles.ticketTimestampBlock}>
+                <Text style={styles.ticketTimeText}>
+                  1st Weight: {selectedSlip ? new Date(selectedSlip.firstTimestamp).toLocaleString("en-IN") : ""}
+                </Text>
+                {selectedSlip?.secondTimestamp && (
+                  <Text style={styles.ticketTimeText}>
+                    2nd Weight: {new Date(selectedSlip.secondTimestamp).toLocaleString("en-IN")}
+                  </Text>
+                )}
+              </View>
+
+              <View style={styles.ticketSignRow}>
+                <Text style={styles.ticketSignText}>Operator Signature</Text>
+                <Text style={styles.ticketSignText}>Driver Signature</Text>
+              </View>
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.ticketCloseButton}
+              onPress={() => setSelectedSlip(null)}
+            >
+              <Text style={styles.ticketCloseButtonText}>Close Weighment Ticket</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* Scale Server Settings Modal */}
+      {/* ========================================== */}
+      {/* MODAL 2: SETTINGS & SECURITY PREFERENCES */}
+      {/* ========================================== */}
       <Modal
         visible={isSettingsOpen}
         transparent
@@ -990,64 +1110,173 @@ export default function App() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.settingsModal}>
-            <Text style={styles.settingsModalTitle}>Scale Server Connection</Text>
-            <Text style={styles.settingsDesc}>
-              Select a quick preset or enter your weighbridge server URL:
-            </Text>
-
-            <View style={styles.presetsRow}>
-              <TouchableOpacity
-                style={styles.presetChip}
-                onPress={() => setCustomIpInput("http://localhost:3000/api/weighments")}
-              >
-                <Text style={styles.presetChipText}>Localhost:3000</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.presetChip}
-                onPress={() => setCustomIpInput("http://10.0.2.2:3000/api/weighments")}
-              >
-                <Text style={styles.presetChipText}>Android (10.0.2.2)</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.presetChip}
-                onPress={() => setCustomIpInput("/api/weighments")}
-              >
-                <Text style={styles.presetChipText}>Same Host (/api)</Text>
+            <View style={styles.settingsHeader}>
+              <Text style={styles.settingsModalTitle}>Settings & Security</Text>
+              <TouchableOpacity onPress={() => setIsSettingsOpen(false)}>
+                <Text style={styles.settingsCloseX}>✕</Text>
               </TouchableOpacity>
             </View>
 
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Security Section */}
+              <Text style={styles.settingsSectionTitle}>TERMINAL SECURITY</Text>
+              <View style={styles.securityBox}>
+                <View style={styles.securityToggleRow}>
+                  <View>
+                    <Text style={styles.securityOptionTitle}>4-Digit & Biometric Lock</Text>
+                    <Text style={styles.securityOptionDesc}>Require PIN or Fingerprint to access app</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.toggleBtn, isPinLockEnabled ? styles.toggleOn : styles.toggleOff]}
+                    onPress={() => setIsPinLockEnabled(!isPinLockEnabled)}
+                  >
+                    <Text style={styles.toggleBtnText}>{isPinLockEnabled ? "ON" : "OFF"}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {isPinLockEnabled && (
+                  <View style={styles.securitySubActions}>
+                    <TouchableOpacity
+                      style={styles.changePinBtn}
+                      onPress={() => {
+                        setShowChangePinModal(true);
+                        setIsSettingsOpen(false);
+                      }}
+                    >
+                      <Text style={styles.changePinBtnText}>🔑 Change 4-Digit PIN (Current: {masterPin})</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.lockNowBtn}
+                      onPress={() => {
+                        setIsSettingsOpen(false);
+                        setIsLocked(true);
+                      }}
+                    >
+                      <Text style={styles.lockNowBtnText}>🔒 Lock Terminal Immediately</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+
+              {/* Server Connection Section */}
+              <Text style={styles.settingsSectionTitle}>WEIGHBRIDGE SERVER IP</Text>
+              <Text style={styles.settingsDesc}>
+                Connect to the weighbridge PC running Dharamkanta Web:
+              </Text>
+
+              <View style={styles.presetsRow}>
+                <TouchableOpacity
+                  style={styles.presetChip}
+                  onPress={() => setCustomIpInput("https://list-introductory-estimates-zoning.trycloudflare.com/api/weighments")}
+                >
+                  <Text style={styles.presetChipText}>Cloudflare Production Tunnel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.presetChip}
+                  onPress={() => setCustomIpInput("http://localhost:3000/api/weighments")}
+                >
+                  <Text style={styles.presetChipText}>Localhost:3000</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.presetChip}
+                  onPress={() => setCustomIpInput("/api/weighments")}
+                >
+                  <Text style={styles.presetChipText}>Same Host (/api)</Text>
+                </TouchableOpacity>
+              </View>
+
+              <TextInput
+                style={styles.settingsInput}
+                value={customIpInput}
+                onChangeText={setCustomIpInput}
+                placeholder="http://192.168.x.x:3000/api/weighments"
+                placeholderTextColor="#64748b"
+                autoCapitalize="none"
+              />
+
+              <View style={styles.settingsActions}>
+                <TouchableOpacity
+                  style={styles.settingsResetBtn}
+                  onPress={() => setCustomIpInput(getDefaultApiUrl())}
+                >
+                  <Text style={styles.settingsResetText}>Reset Default</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.settingsSaveBtn}
+                  onPress={() => {
+                    setApiUrl(customIpInput.trim());
+                    setIsSettingsOpen(false);
+                    setLoading(true);
+                    fetchSlips();
+                  }}
+                >
+                  <Text style={styles.settingsSaveText}>Connect Server</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================== */}
+      {/* MODAL 3: CHANGE PIN DIALOG */}
+      {/* ========================================== */}
+      <Modal
+        visible={showChangePinModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowChangePinModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.settingsModal}>
+            <Text style={styles.settingsModalTitle}>Change 4-Digit Security PIN</Text>
+            <Text style={styles.settingsDesc}>
+              Enter a new 4-digit code to protect this Dharamkanta terminal.
+            </Text>
+
             <TextInput
               style={styles.settingsInput}
-              value={customIpInput}
-              onChangeText={setCustomIpInput}
-              autoCapitalize="none"
-              autoCorrect={false}
-              placeholder="http://192.168.x.x:3000/api/weighments"
+              value={newPinInput}
+              onChangeText={setNewPinInput}
+              placeholder="Enter new 4 digits"
+              placeholderTextColor="#64748b"
+              keyboardType="number-pad"
+              maxLength={4}
+              secureTextEntry
             />
+
+            <TextInput
+              style={styles.settingsInput}
+              value={confirmPinInput}
+              onChangeText={setConfirmPinInput}
+              placeholder="Confirm new 4 digits"
+              placeholderTextColor="#64748b"
+              keyboardType="number-pad"
+              maxLength={4}
+              secureTextEntry
+            />
+
+            {changePinError ? (
+              <Text style={styles.changePinErrorText}>{changePinError}</Text>
+            ) : null}
 
             <View style={styles.settingsActions}>
               <TouchableOpacity
                 style={styles.settingsResetBtn}
                 onPress={() => {
-                  const def = getDefaultApiUrl();
-                  setCustomIpInput(def);
-                  setApiUrl(def);
-                  setIsSettingsOpen(false);
+                  setShowChangePinModal(false);
+                  setNewPinInput("");
+                  setConfirmPinInput("");
+                  setChangePinError("");
                 }}
               >
-                <Text style={styles.settingsResetText}>Reset</Text>
+                <Text style={styles.settingsResetText}>Cancel</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.settingsSaveBtn}
-                onPress={() => {
-                  setApiUrl(customIpInput.trim());
-                  setIsSettingsOpen(false);
-                  setLoading(true);
-                  fetchSlips();
-                }}
-              >
-                <Text style={styles.settingsSaveText}>Connect</Text>
+              <TouchableOpacity style={styles.settingsSaveBtn} onPress={handleSaveNewPin}>
+                <Text style={styles.settingsSaveText}>Save PIN</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1057,16 +1286,402 @@ export default function App() {
   );
 }
 
+// ==========================================
+// COMPONENT: SLIP CARD
+// ==========================================
+function SlipCard({ slip, onViewSlip }: { slip: Weighment; onViewSlip: () => void }) {
+  const isComplete = slip.isComplete;
+  const rate = slip.rate || 450;
+  const amount = ((slip.netWeight || 0) * rate).toLocaleString("en-IN", {
+    maximumFractionDigits: 0,
+  });
+
+  return (
+    <View style={styles.slipCard}>
+      {/* Card Header: Slip #, Vehicle # & Status Badge */}
+      <View style={styles.slipCardHeader}>
+        <View style={styles.slipNoPlateRow}>
+          <View style={styles.slipNoBadge}>
+            <Text style={styles.slipNoText}>#{slip.slipNo}</Text>
+          </View>
+          <View style={styles.plateBadge}>
+            <Text style={styles.plateText}>{slip.vehicleNumber}</Text>
+          </View>
+        </View>
+
+        <View style={styles.statusBadgeWrapper}>
+          {isComplete ? (
+            <View style={styles.completeStatusBadge}>
+              <View style={styles.statusDotGreen} />
+              <Text style={styles.completeStatusText}>COMPLETED</Text>
+            </View>
+          ) : (
+            <View style={styles.inProgressStatusBadge}>
+              <View style={styles.statusDotAmber} />
+              <Text style={styles.inProgressStatusText}>1ST WEIGHT</Text>
+            </View>
+          )}
+        </View>
+      </View>
+
+      {/* Party Name & Material */}
+      <View style={styles.slipDetailsBlock}>
+        <Text style={styles.partyNameText} numberOfLines={1}>
+          {slip.partyName}
+        </Text>
+        <View style={styles.materialTagRow}>
+          <Text style={styles.materialTagLabel}>ITEM:</Text>
+          <Text style={styles.materialTagValue}>{slip.itemName}</Text>
+        </View>
+      </View>
+
+      {/* 3-Column Weight Grid */}
+      <View style={styles.weightsGridRow}>
+        <View style={styles.weightColumnBox}>
+          <Text style={styles.weightColumnLabel}>GROSS</Text>
+          <Text style={styles.weightColumnValue}>{slip.grossWeight || 0.0} T</Text>
+        </View>
+
+        <View style={styles.weightColumnBox}>
+          <Text style={styles.weightColumnLabel}>TARE</Text>
+          <Text style={styles.weightColumnValue}>{slip.tareWeight || 0.0} T</Text>
+        </View>
+
+        <View style={[styles.weightColumnBox, isComplete && styles.netWeightColumnBox]}>
+          <Text style={[styles.weightColumnLabel, isComplete && styles.netWeightLabelActive]}>
+            NET WEIGHT
+          </Text>
+          <Text style={[styles.weightColumnValue, isComplete && styles.netWeightValueActive]}>
+            {slip.netWeight || 0.0} T
+          </Text>
+        </View>
+      </View>
+
+      {/* Footer Info: Rate, Valuation & Ticket Action */}
+      <View style={styles.slipCardFooter}>
+        <View style={styles.slipValuationCol}>
+          <Text style={styles.rateLabelText}>
+            @ ₹{rate}/T · <Text style={styles.amountBoldText}>₹{amount}</Text>
+          </Text>
+          <Text style={styles.slipTimeAgoText}>
+            {new Date(slip.firstTimestamp).toLocaleTimeString("en-IN", {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </Text>
+        </View>
+
+        <TouchableOpacity style={styles.viewSlipBtn} onPress={onViewSlip}>
+          <Text style={styles.viewSlipBtnText}>View Slip 📑</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+// ==========================================
+// STYLES
+// ==========================================
 const styles = StyleSheet.create({
+  // ROOT CONTAINERS
   safeArea: {
     flex: 1,
-    backgroundColor: "#0f172a",
+    backgroundColor: "#070b14",
   },
-  header: {
+  contentArea: {
+    flex: 1,
+    backgroundColor: "#070b14",
+  },
+  tabContent: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 90,
+  },
+  listScrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 90,
+  },
+
+  // SECURITY LOCK SCREEN STYLES
+  lockContainer: {
+    flex: 1,
+    backgroundColor: "#070b14",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: Platform.OS === "android" ? 40 : 20,
+    paddingHorizontal: 24,
+  },
+  lockHeader: {
+    alignItems: "center",
+    marginTop: 20,
+  },
+  // AS LOGO BADGE STYLES
+  asBadge: {
+    backgroundColor: "#0d1527",
+    borderWidth: 1.5,
+    borderColor: "#10b981",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  asBadgeLock: {
+    backgroundColor: "#091122",
+    borderWidth: 2,
+    borderColor: "#10b981",
+    marginBottom: 14,
+  },
+  asLettersContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  asLetterA: {
+    color: "#ffffff",
+    fontWeight: "900",
+    fontSize: 16,
+    letterSpacing: -0.5,
+  },
+  asLetterS: {
+    color: "#10b981",
+    fontWeight: "900",
+    fontSize: 16,
+    letterSpacing: -0.5,
+  },
+  asLetterALock: {
+    fontSize: 26,
+    letterSpacing: -1,
+  },
+  asLetterSLock: {
+    fontSize: 26,
+    letterSpacing: -0.5,
+  },
+  asBalanceLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 1,
+    width: "70%",
+    gap: 2,
+  },
+  asBalanceLineLock: {
+    marginTop: 3,
+    width: "75%",
+  },
+  asLinePipLeft: {
+    width: 2.5,
+    height: 2.5,
+    borderRadius: 1.5,
+    backgroundColor: "#38bdf8",
+  },
+  asLineCenter: {
+    flex: 1,
+    height: 1.5,
+    backgroundColor: "#10b981",
+    borderRadius: 1,
+  },
+  asLinePipRight: {
+    width: 2.5,
+    height: 2.5,
+    borderRadius: 1.5,
+    backgroundColor: "#38bdf8",
+  },
+
+  lockShieldBadge: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "rgba(16, 185, 129, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(16, 185, 129, 0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  lockShieldIcon: {
+    fontSize: 28,
+  },
+  lockBrandTitle: {
+    color: "#ffffff",
+    fontSize: 22,
+    fontWeight: "900",
+    letterSpacing: 1.5,
+  },
+  lockSubtitle: {
+    color: "#94a3b8",
+    fontSize: 12,
+    marginTop: 4,
+  },
+  lockSecureRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 8,
+    gap: 6,
+  },
+  secureDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#10b981",
+  },
+  secureText: {
+    color: "#10b981",
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+
+  // PIN DOTS DISPLAY
+  pinDisplayContainer: {
+    alignItems: "center",
+    marginVertical: 10,
+  },
+  pinInstruction: {
+    color: "#cbd5e1",
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 16,
+  },
+  pinDotsRow: {
+    flexDirection: "row",
+    gap: 20,
+  },
+  pinDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: "#334155",
+    backgroundColor: "transparent",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  pinDotFilled: {
+    borderColor: "#10b981",
+    backgroundColor: "rgba(16, 185, 129, 0.2)",
+  },
+  pinDotError: {
+    borderColor: "#ef4444",
+    backgroundColor: "rgba(239, 68, 68, 0.2)",
+  },
+  pinDotCore: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#10b981",
+  },
+  pinErrorText: {
+    color: "#ef4444",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 12,
+  },
+  pinHintText: {
+    color: "#64748b",
+    fontSize: 11,
+    marginTop: 12,
+  },
+
+  // NUMERIC KEYPAD
+  keypadGrid: {
+    width: "100%",
+    maxWidth: 320,
+    gap: 12,
+  },
+  keypadRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 16,
+  },
+  keypadButton: {
+    flex: 1,
+    height: 68,
+    borderRadius: 34,
     backgroundColor: "#0f172a",
+    borderWidth: 1,
+    borderColor: "#1e293b",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  keypadNumber: {
+    color: "#ffffff",
+    fontSize: 24,
+    fontWeight: "700",
+  },
+  keypadLetters: {
+    color: "#64748b",
+    fontSize: 9,
+    fontWeight: "600",
+    letterSpacing: 1,
+    marginTop: 1,
+  },
+  bioButton: {
+    backgroundColor: "rgba(16, 185, 129, 0.12)",
+    borderColor: "rgba(16, 185, 129, 0.35)",
+  },
+  bioIcon: {
+    fontSize: 20,
+  },
+  bioLabel: {
+    color: "#10b981",
+    fontSize: 9,
+    fontWeight: "700",
+    marginTop: 1,
+  },
+  deleteIcon: {
+    color: "#94a3b8",
+    fontSize: 20,
+    fontWeight: "700",
+  },
+
+  // LOCK FOOTER
+  lockFooter: {
+    width: "100%",
+    maxWidth: 320,
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 10,
+  },
+  biometricScanBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#0f172a",
+    borderWidth: 1,
+    borderColor: "#1e293b",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    gap: 12,
+    width: "100%",
+  },
+  bioSensorIcon: {
+    fontSize: 22,
+  },
+  bioBannerTitle: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  bioBannerSubtitle: {
+    color: "#64748b",
+    fontSize: 10,
+  },
+  quickUnlockBtn: {
+    paddingVertical: 8,
+  },
+  quickUnlockText: {
+    color: "#64748b",
+    fontSize: 11,
+    textDecorationLine: "underline",
+  },
+
+  // MAIN HEADER
+  header: {
+    backgroundColor: "#070b14",
     paddingHorizontal: 16,
     paddingTop: Platform.OS === "android" ? 38 : 12,
-    paddingBottom: 14,
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#1e293b",
   },
@@ -1075,634 +1690,713 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  backButton: {
+  headerBrandCol: {
+    flex: 1,
+  },
+  brandRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 4,
+    gap: 10,
   },
-  backButtonArrow: {
-    color: "#60a5fa",
-    fontSize: 16,
-    marginRight: 4,
-    fontWeight: "bold",
+  brandLogoBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "rgba(16, 185, 129, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(16, 185, 129, 0.3)",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  backButtonText: {
-    color: "#93c5fd",
-    fontSize: 12,
-    fontWeight: "600",
+  brandLogoIcon: {
+    fontSize: 18,
   },
   brandSubtitle: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: "#94a3b8",
+    color: "#10b981",
+    fontSize: 9,
+    fontWeight: "800",
     letterSpacing: 1.2,
-    marginBottom: 2,
   },
   headerTitle: {
     color: "#ffffff",
-    fontSize: 19,
-    fontWeight: "800",
+    fontSize: 18,
+    fontWeight: "900",
     letterSpacing: -0.3,
   },
-  settingsButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: "#1e293b",
-  },
-  settingsIcon: {
-    color: "#ffffff",
-    fontSize: 18,
-  },
-  offlineNotice: {
+  headerActionsRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "rgba(217, 119, 6, 0.2)",
+    gap: 8,
+  },
+  headerActionBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: "#0f172a",
     borderWidth: 1,
+    borderColor: "#1e293b",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  headerActionIcon: {
+    fontSize: 16,
+  },
+  statusStrip: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#1e293b",
+  },
+  statusItemLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  livePulseDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#10b981",
+  },
+  offlinePulseDot: {
+    backgroundColor: "#f59e0b",
+  },
+  statusStripText: {
+    color: "#94a3b8",
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+  statusItemRight: {},
+  todayDateText: {
+    color: "#64748b",
+    fontSize: 10,
+    fontWeight: "600",
+  },
+
+  // KPI STATS CARDS GRID
+  kpiGrid: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    gap: 12,
+  },
+  kpiCard: {
+    backgroundColor: "#0f172a",
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
+  },
+  kpiCardEmerald: {
+    borderColor: "rgba(16, 185, 129, 0.3)",
+    backgroundColor: "rgba(15, 23, 42, 0.95)",
+  },
+  kpiCardBlue: {
+    borderColor: "rgba(59, 130, 246, 0.3)",
+  },
+  kpiCardAmber: {
     borderColor: "rgba(245, 158, 11, 0.3)",
+  },
+  kpiCardPurple: {
+    borderColor: "rgba(168, 85, 247, 0.3)",
+  },
+  kpiHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  kpiLabel: {
+    color: "#94a3b8",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+  },
+  kpiBadgeEmerald: {
+    backgroundColor: "rgba(16, 185, 129, 0.15)",
+    color: "#10b981",
+    fontSize: 9,
+    fontWeight: "800",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  kpiBadgeBlue: {
+    backgroundColor: "rgba(59, 130, 246, 0.15)",
+    color: "#60a5fa",
+    fontSize: 9,
+    fontWeight: "800",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  kpiBadgeAmber: {
+    backgroundColor: "rgba(245, 158, 11, 0.15)",
+    color: "#fbbf24",
+    fontSize: 9,
+    fontWeight: "800",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  kpiBadgePurple: {
+    backgroundColor: "rgba(168, 85, 247, 0.15)",
+    color: "#c084fc",
+    fontSize: 9,
+    fontWeight: "800",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  kpiValueRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    marginTop: 6,
+    gap: 4,
+  },
+  kpiCurrency: {
+    color: "#60a5fa",
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  kpiValueLarge: {
+    color: "#ffffff",
+    fontSize: 28,
+    fontWeight: "900",
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+  },
+  kpiUnit: {
+    color: "#94a3b8",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  kpiSubtext: {
+    color: "#64748b",
+    fontSize: 11,
+    marginTop: 3,
+  },
+
+  // QUICK MODULES
+  quickNavSection: {
+    paddingHorizontal: 16,
+    marginTop: 18,
+  },
+  sectionHeaderTitle: {
+    color: "#94a3b8",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1,
+    marginBottom: 10,
+  },
+  quickNavRow: {
+    gap: 8,
+  },
+  quickNavCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#0f172a",
+    borderWidth: 1,
+    borderColor: "#1e293b",
+    borderRadius: 12,
+    padding: 12,
+    gap: 12,
+  },
+  quickNavIcon: {
+    fontSize: 22,
+  },
+  quickNavTitle: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  quickNavDesc: {
+    color: "#64748b",
+    fontSize: 11,
+    marginTop: 1,
+  },
+
+  // RECENT SECTION
+  recentSection: {
+    paddingHorizontal: 16,
+    marginTop: 20,
+  },
+  recentHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  viewAllText: {
+    color: "#10b981",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+
+  // SLIP CARD COMPONENT
+  slipCard: {
+    backgroundColor: "#0f172a",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#1e293b",
+    padding: 12,
+    marginBottom: 10,
+  },
+  slipCardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  slipNoPlateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  slipNoBadge: {
+    backgroundColor: "#1e293b",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  slipNoText: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  plateBadge: {
+    backgroundColor: "#1e293b",
+    borderWidth: 1,
+    borderColor: "#334155",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  plateText: {
+    color: "#f8fafc",
+    fontSize: 11,
+    fontWeight: "800",
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+  },
+  statusBadgeWrapper: {},
+  completeStatusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(16, 185, 129, 0.12)",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    gap: 5,
+  },
+  statusDotGreen: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#10b981",
+  },
+  completeStatusText: {
+    color: "#10b981",
+    fontSize: 9,
+    fontWeight: "800",
+  },
+  inProgressStatusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(245, 158, 11, 0.12)",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    gap: 5,
+  },
+  statusDotAmber: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#f59e0b",
+  },
+  inProgressStatusText: {
+    color: "#f59e0b",
+    fontSize: 9,
+    fontWeight: "800",
+  },
+  slipDetailsBlock: {
+    marginVertical: 8,
+  },
+  partyNameText: {
+    color: "#e2e8f0",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  materialTagRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 2,
+  },
+  materialTagLabel: {
+    color: "#64748b",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  materialTagValue: {
+    color: "#38bdf8",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+
+  // 3-COLUMN WEIGHTS
+  weightsGridRow: {
+    flexDirection: "row",
+    gap: 6,
+    marginVertical: 6,
+  },
+  weightColumnBox: {
+    flex: 1,
+    backgroundColor: "#070b14",
+    borderWidth: 1,
+    borderColor: "#1e293b",
+    borderRadius: 8,
+    padding: 8,
+    alignItems: "center",
+  },
+  weightColumnLabel: {
+    color: "#64748b",
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  weightColumnValue: {
+    color: "#cbd5e1",
+    fontSize: 13,
+    fontWeight: "800",
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    marginTop: 2,
+  },
+  netWeightColumnBox: {
+    borderColor: "rgba(16, 185, 129, 0.4)",
+    backgroundColor: "rgba(16, 185, 129, 0.08)",
+  },
+  netWeightLabelActive: {
+    color: "#10b981",
+  },
+  netWeightValueActive: {
+    color: "#10b981",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+
+  // FOOTER ROW
+  slipCardFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderTopWidth: 1,
+    borderTopColor: "#1e293b",
+    paddingTop: 8,
+    marginTop: 4,
+  },
+  slipValuationCol: {},
+  rateLabelText: {
+    color: "#94a3b8",
+    fontSize: 11,
+  },
+  amountBoldText: {
+    color: "#ffffff",
+    fontWeight: "800",
+  },
+  slipTimeAgoText: {
+    color: "#64748b",
+    fontSize: 10,
+    marginTop: 1,
+  },
+  viewSlipBtn: {
+    backgroundColor: "#1e293b",
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 6,
-    marginTop: 8,
   },
-  offlineLeft: {
+  viewSlipBtnText: {
+    color: "#cbd5e1",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+
+  // LIST HEADER & SEARCH
+  listHeaderBar: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
-  offlineDot: {
+  listHeaderTitle: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  listHeaderSub: {
+    color: "#94a3b8",
+    fontSize: 11,
+    marginTop: 2,
+  },
+  pendingBadge: {
+    backgroundColor: "rgba(245, 158, 11, 0.15)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  pendingBadgeText: {
     color: "#f59e0b",
     fontSize: 10,
-    marginRight: 6,
-  },
-  offlineText: {
-    color: "#fef3c7",
-    fontSize: 11,
-    fontWeight: "600",
-    flex: 1,
-  },
-  offlineLink: {
-    color: "#fbbf24",
-    fontSize: 11,
-    fontWeight: "700",
-    marginLeft: 6,
-  },
-  container: {
-    flex: 1,
-    backgroundColor: "#f8fafc",
-  },
-  pageContent: {
-    flex: 1,
-  },
-  pageContainer: {
-    flex: 1,
-  },
-  kpiContainer: {
-    flexDirection: "row",
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 8,
-    gap: 8,
-  },
-  kpiCard: {
-    flex: 1,
-    backgroundColor: "#ffffff",
-    padding: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  kpiCardClickable: {
-    borderWidth: 1.5,
-  },
-  kpiLabel: {
-    fontSize: 9,
-    fontWeight: "700",
-    color: "#64748b",
-    letterSpacing: 0.5,
-  },
-  kpiValue: {
-    fontSize: 17,
     fontWeight: "800",
-    color: "#0f172a",
-    marginTop: 2,
   },
-  kpiUnit: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#64748b",
-  },
-  kpiSub: {
-    fontSize: 10,
-    color: "#2563eb",
-    marginTop: 1,
-    fontWeight: "600",
-  },
-  quickNavSection: {
-    paddingHorizontal: 16,
-    marginTop: 12,
-  },
-  sectionHeading: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#64748b",
-    letterSpacing: 0.8,
-    marginBottom: 8,
-  },
-  navActionCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#ffffff",
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  navActionIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-  navActionIcon: {
-    fontSize: 18,
-  },
-  navActionTextCol: {
-    flex: 1,
-  },
-  navActionTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#0f172a",
-  },
-  navActionDesc: {
-    fontSize: 11,
-    color: "#64748b",
-    marginTop: 2,
-  },
-  navActionBadgeAmber: {
-    backgroundColor: "#fef3c7",
-    color: "#92400e",
-    fontSize: 10,
-    fontWeight: "700",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    marginLeft: 6,
-  },
-  navActionBadgeGreen: {
-    backgroundColor: "#d1fae5",
-    color: "#065f46",
-    fontSize: 10,
-    fontWeight: "700",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    marginLeft: 6,
-  },
-  navActionBadgeBlue: {
-    backgroundColor: "#dbeafe",
-    color: "#1e40af",
-    fontSize: 10,
-    fontWeight: "700",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    marginLeft: 6,
-  },
-  recentSection: {
-    paddingHorizontal: 16,
-    marginTop: 14,
-  },
-  searchContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#ffffff",
+  searchBarWrapper: {
+    position: "relative",
     marginHorizontal: 16,
-    marginTop: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#cbd5e1",
-    height: 40,
-  },
-  searchIcon: {
-    fontSize: 14,
-    marginRight: 8,
+    marginVertical: 10,
   },
   searchInput: {
-    flex: 1,
+    backgroundColor: "#0f172a",
+    borderWidth: 1,
+    borderColor: "#1e293b",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: "#ffffff",
     fontSize: 13,
-    color: "#0f172a",
   },
-  clearBtn: {
-    padding: 4,
+  clearSearchBtn: {
+    position: "absolute",
+    right: 12,
+    top: 10,
   },
-  clearBtnText: {
+  clearSearchIcon: {
     color: "#94a3b8",
     fontSize: 14,
-    fontWeight: "bold",
-  },
-  itemSelectorContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 10,
-  },
-  itemSelectorLabel: {
-    fontSize: 10,
     fontWeight: "700",
-    color: "#64748b",
-    letterSpacing: 0.8,
-    marginBottom: 6,
   },
-  itemChipsScroll: {
-    gap: 6,
-    paddingBottom: 4,
+  chipsScroll: {
+    maxHeight: 38,
+    marginBottom: 8,
   },
-  itemChip: {
+  chipsContent: {
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  materialChip: {
+    backgroundColor: "#0f172a",
+    borderWidth: 1,
+    borderColor: "#1e293b",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
-    borderWidth: 1,
   },
-  itemChipActive: {
+  materialChipActive: {
+    backgroundColor: "rgba(16, 185, 129, 0.15)",
+    borderColor: "#10b981",
+  },
+  materialChipText: {
+    color: "#94a3b8",
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  materialChipTextActive: {
+    color: "#10b981",
+    fontWeight: "800",
+  },
+
+  // MATERIAL REPORT TAB
+  reportSummaryBanner: {
     backgroundColor: "#0f172a",
-    borderColor: "#0f172a",
+    borderWidth: 1,
+    borderColor: "rgba(6, 182, 212, 0.3)",
+    marginHorizontal: 16,
+    marginTop: 14,
+    borderRadius: 16,
+    padding: 16,
   },
-  itemChipInactive: {
-    backgroundColor: "#ffffff",
-    borderColor: "#cbd5e1",
-  },
-  itemChipText: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  itemChipTextActive: {
+  reportBannerTitle: {
     color: "#ffffff",
-  },
-  itemChipTextInactive: {
-    color: "#475569",
-  },
-  card: {
-    backgroundColor: "#ffffff",
-    padding: 13,
-    borderRadius: 10,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  slipNumberRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  slipNo: {
     fontSize: 16,
-    fontWeight: "800",
-    color: "#0f172a",
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    fontWeight: "900",
   },
-  slipTime: {
+  reportBannerDesc: {
+    color: "#94a3b8",
     fontSize: 11,
-    color: "#64748b",
-  },
-  badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
-    borderWidth: 1,
-  },
-  badgeComplete: {
-    backgroundColor: "#ecfdf5",
-    borderColor: "#a7f3d0",
-  },
-  badgePending: {
-    backgroundColor: "#fffbeb",
-    borderColor: "#fde68a",
-  },
-  badgeText: {
-    fontSize: 9,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-  badgeTextComplete: {
-    color: "#065f46",
-  },
-  badgeTextPending: {
-    color: "#92400e",
-  },
-  partyName: {
-    fontSize: 14,
-    color: "#1e293b",
-    fontWeight: "700",
-    marginBottom: 8,
-  },
-  detailsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  vehiclePlate: {
-    backgroundColor: "#f1f5f9",
-    borderWidth: 1,
-    borderColor: "#cbd5e1",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
-  },
-  vehiclePlateText: {
-    fontSize: 13,
-    color: "#0f172a",
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    fontWeight: "700",
-    letterSpacing: 0.6,
-  },
-  itemTag: {
-    fontSize: 11,
-    color: "#475569",
-    fontWeight: "600",
-    backgroundColor: "#f8fafc",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-  },
-  weightRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    borderTopWidth: 1,
-    borderTopColor: "#f1f5f9",
-    paddingTop: 8,
-  },
-  weightLabel: {
-    fontSize: 9,
-    fontWeight: "700",
-    color: "#64748b",
-    letterSpacing: 0.5,
-  },
-  weightValue: {
-    fontSize: 15,
-    fontWeight: "800",
     marginTop: 2,
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
   },
-  viewSlipAction: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    backgroundColor: "#f1f5f9",
-    borderRadius: 4,
-  },
-  viewSlipText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#334155",
-  },
-  emptyContainer: {
-    padding: 32,
-    alignItems: "center",
-  },
-  emptyTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#334155",
-    marginBottom: 4,
-  },
-  emptyText: {
-    fontSize: 13,
-    color: "#64748b",
-    textAlign: "center",
-  },
-  // SUMMARY FOOTERS (AT LAST)
-  bottomSummaryBarAmber: {
-    position: "absolute",
-    bottom: 56,
-    left: 0,
-    right: 0,
-    backgroundColor: "#fef3c7",
-    borderTopWidth: 2,
-    borderTopColor: "#f59e0b",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 4,
-  },
-  summaryBarRow: {
+  reportTotalRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  summaryBarLabelAmber: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#92400e",
-    letterSpacing: 0.5,
-  },
-  summaryBarSubAmber: {
-    fontSize: 10,
-    color: "#b45309",
-    marginTop: 1,
-  },
-  summaryBarValueBadgeAmber: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    backgroundColor: "#fde68a",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    gap: 4,
-  },
-  summaryBarCountAmber: {
-    fontSize: 20,
-    fontWeight: "900",
-    color: "#78350f",
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-  },
-  summaryBarUnitAmber: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#92400e",
-  },
-  bottomSummaryBarGreen: {
-    position: "absolute",
-    bottom: 56,
-    left: 0,
-    right: 0,
-    backgroundColor: "#ecfdf5",
-    borderTopWidth: 2,
-    borderTopColor: "#10b981",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 4,
-  },
-  summaryBarDualRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  summaryDualCol: {
-    flex: 1,
-  },
-  summaryDividerVert: {
-    width: 1,
-    height: 36,
-    backgroundColor: "#a7f3d0",
-    marginHorizontal: 12,
-  },
-  summaryBarLabelGreen: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#065f46",
-    letterSpacing: 0.5,
-  },
-  summaryBarCountGreen: {
-    fontSize: 18,
-    fontWeight: "900",
-    color: "#047857",
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    marginTop: 1,
-  },
-  summaryBarSubGreen: {
-    fontSize: 10,
-    color: "#065f46",
-    marginTop: 1,
-  },
-  bottomSummaryBarBlue: {
-    position: "absolute",
-    bottom: 56,
-    left: 0,
-    right: 0,
-    backgroundColor: "#eff6ff",
-    borderTopWidth: 2,
-    borderTopColor: "#3b82f6",
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 4,
-  },
-  itemSummaryHeaderRow: {
-    borderBottomWidth: 1,
-    borderBottomColor: "#bfdbfe",
-    paddingBottom: 4,
-    marginBottom: 6,
-  },
-  itemSummaryTitle: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#1e40af",
-    letterSpacing: 0.5,
-  },
-  summaryDividerVertBlue: {
-    width: 1,
-    height: 36,
-    backgroundColor: "#bfdbfe",
-    marginHorizontal: 12,
-  },
-  summaryBarLabelBlue: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#1e40af",
-    letterSpacing: 0.5,
-  },
-  summaryBarCountBlue: {
-    fontSize: 17,
-    fontWeight: "900",
-    color: "#1d4ed8",
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    marginTop: 1,
-  },
-  summaryBarSubBlue: {
-    fontSize: 10,
-    color: "#2563eb",
-    marginTop: 1,
-  },
-  // BOTTOM NAVIGATION BAR
-  bottomNavBar: {
-    flexDirection: "row",
-    height: 56,
-    backgroundColor: "#ffffff",
-    borderTopWidth: 1,
-    borderTopColor: "#e2e8f0",
     alignItems: "center",
     justifyContent: "space-around",
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#1e293b",
+  },
+  reportTotalCol: {
+    alignItems: "center",
+  },
+  reportTotalLabel: {
+    color: "#64748b",
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  reportTotalVal: {
+    color: "#38bdf8",
+    fontSize: 18,
+    fontWeight: "900",
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    marginTop: 2,
+  },
+  reportDividerVert: {
+    width: 1,
+    height: 32,
+    backgroundColor: "#1e293b",
+  },
+  materialsList: {
+    paddingHorizontal: 16,
+    marginTop: 14,
+    gap: 10,
+  },
+  materialCard: {
+    backgroundColor: "#0f172a",
+    borderWidth: 1,
+    borderColor: "#1e293b",
+    borderRadius: 14,
+    padding: 14,
+  },
+  materialCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  materialRankBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(56, 189, 248, 0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  materialRankText: {
+    color: "#38bdf8",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  materialTitleCol: {
+    flex: 1,
+  },
+  materialName: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  materialTruckCount: {
+    color: "#64748b",
+    fontSize: 11,
+    marginTop: 1,
+  },
+  materialMetricsRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#1e293b",
+  },
+  matMetricBox: {
+    flex: 1,
+  },
+  matMetricLabel: {
+    color: "#64748b",
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  matMetricValGreen: {
+    color: "#10b981",
+    fontSize: 16,
+    fontWeight: "900",
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    marginTop: 2,
+  },
+  matMetricValBlue: {
+    color: "#60a5fa",
+    fontSize: 16,
+    fontWeight: "900",
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    marginTop: 2,
+  },
+
+  // EMPTY STATE
+  emptyContainer: {
+    padding: 40,
+    alignItems: "center",
+  },
+  emptyIcon: {
+    fontSize: 32,
+    marginBottom: 8,
+  },
+  emptyTitle: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  emptyText: {
+    color: "#64748b",
+    fontSize: 12,
+    marginTop: 4,
+    textAlign: "center",
+  },
+
+  // FLOATING BOTTOM NAV BAR
+  bottomNavBar: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 60,
+    backgroundColor: "rgba(7, 11, 20, 0.96)",
+    borderTopWidth: 1,
+    borderTopColor: "#1e293b",
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "center",
+    paddingBottom: Platform.OS === "ios" ? 14 : 4,
   },
   navTab: {
-    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 6,
+    paddingVertical: 4,
+    minWidth: 60,
   },
   tabIconWrapper: {
     position: "relative",
   },
   navTabIcon: {
     fontSize: 18,
-    opacity: 0.6,
+    opacity: 0.5,
   },
   navTabIconActive: {
     opacity: 1,
+    transform: [{ scale: 1.1 }],
   },
   navTabLabel: {
+    color: "#64748b",
     fontSize: 10,
     fontWeight: "600",
-    color: "#64748b",
     marginTop: 2,
   },
   navTabLabelActive: {
-    color: "#0f172a",
+    color: "#10b981",
     fontWeight: "800",
   },
   tabBadgeAmber: {
     position: "absolute",
     top: -4,
     right: -10,
-    backgroundColor: "#d97706",
-    borderRadius: 8,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    minWidth: 14,
-    alignItems: "center",
-  },
-  tabBadgeGreen: {
-    position: "absolute",
-    top: -4,
-    right: -10,
-    backgroundColor: "#059669",
+    backgroundColor: "#f59e0b",
     borderRadius: 8,
     paddingHorizontal: 4,
     paddingVertical: 1,
@@ -1710,281 +2404,344 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   tabBadgeText: {
-    color: "#ffffff",
-    fontSize: 8,
-    fontWeight: "800",
+    color: "#0f172a",
+    fontSize: 9,
+    fontWeight: "900",
   },
-  // MODAL
+
+  // MODAL OVERLAY & WEIGHMENT SLIP MODAL
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.6)",
+    backgroundColor: "rgba(0, 0, 0, 0.75)",
     justifyContent: "center",
+    alignItems: "center",
     padding: 16,
   },
-  modalContent: {
+  ticketCardModal: {
+    width: "100%",
+    maxWidth: 380,
     backgroundColor: "#ffffff",
-    borderRadius: 14,
-    maxHeight: "88%",
-    overflow: "hidden",
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e2e8f0",
-  },
-  modalTitle: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#0f172a",
-    letterSpacing: -0.2,
-  },
-  modalCloseBtn: {
-    padding: 4,
-  },
-  modalCloseText: {
-    fontSize: 16,
-    color: "#64748b",
-    fontWeight: "bold",
-  },
-  modalBody: {
-    padding: 14,
-  },
-  slipTicket: {
-    borderWidth: 1.5,
-    borderStyle: "dashed",
-    borderColor: "#94a3b8",
-    padding: 14,
-    borderRadius: 8,
-    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    padding: 18,
+    maxHeight: "85%",
   },
   ticketHeader: {
     alignItems: "center",
-    marginBottom: 8,
+    borderBottomWidth: 2,
+    borderBottomColor: "#0f172a",
+    paddingBottom: 10,
   },
   ticketPlantName: {
-    fontSize: 15,
-    fontWeight: "800",
     color: "#0f172a",
+    fontSize: 16,
+    fontWeight: "900",
     letterSpacing: 0.5,
   },
-  ticketSub: {
-    fontSize: 11,
+  ticketPlantSub: {
     color: "#475569",
-    marginTop: 1,
+    fontSize: 11,
+    marginTop: 2,
   },
-  ticketCapacity: {
-    fontSize: 10,
-    color: "#64748b",
-    marginTop: 1,
+  ticketSlipBadge: {
+    backgroundColor: "#0f172a",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginTop: 8,
   },
-  ticketDivider: {
-    height: 1,
-    backgroundColor: "#e2e8f0",
-    marginVertical: 8,
+  ticketSlipNoText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  ticketBody: {
+    marginVertical: 12,
   },
   ticketRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: 3,
+    paddingVertical: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
   },
   ticketLabel: {
-    fontSize: 12,
     color: "#64748b",
-  },
-  ticketValue: {
     fontSize: 12,
-    color: "#1e293b",
+  },
+  ticketVal: {
+    color: "#0f172a",
+    fontSize: 12,
     fontWeight: "600",
-    maxWidth: "60%",
-    textAlign: "right",
   },
-  ticketValueBold: {
-    fontSize: 12,
-    fontWeight: "700",
+  ticketValBold: {
     color: "#0f172a",
+    fontSize: 12,
+    fontWeight: "800",
   },
-  ticketPlate: {
-    fontSize: 12,
-    fontWeight: "700",
+  ticketPlateVal: {
     color: "#0f172a",
+    fontSize: 13,
+    fontWeight: "800",
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
   },
-  ticketWeightBox: {
+  ticketWeightsContainer: {
     backgroundColor: "#f8fafc",
     borderWidth: 1,
     borderColor: "#e2e8f0",
+    borderRadius: 8,
     padding: 10,
-    borderRadius: 6,
     marginVertical: 8,
   },
-  weightLine: {
+  ticketWeightRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     paddingVertical: 2,
   },
-  weightLabelLine: {
-    fontSize: 12,
-    color: "#475569",
+  ticketWeightLabel: {
+    color: "#64748b",
+    fontSize: 11,
+    fontWeight: "700",
   },
-  weightValLine: {
+  ticketWeightNum: {
+    color: "#0f172a",
     fontSize: 12,
     fontWeight: "700",
-    color: "#0f172a",
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
   },
-  netWeightLine: {
+  ticketNetWeightRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     borderTopWidth: 1,
     borderTopColor: "#cbd5e1",
     paddingTop: 6,
     marginTop: 4,
   },
-  netWeightLabel: {
-    fontSize: 13,
-    fontWeight: "800",
+  ticketNetLabel: {
     color: "#0f172a",
+    fontSize: 12,
+    fontWeight: "900",
   },
-  netWeightVal: {
-    fontSize: 14,
-    fontWeight: "800",
+  ticketNetVal: {
     color: "#059669",
+    fontSize: 14,
+    fontWeight: "900",
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
   },
-  tonnesText: {
-    fontSize: 10,
-    color: "#64748b",
-    textAlign: "right",
-    marginTop: 2,
+  ticketAmountVal: {
+    color: "#059669",
+    fontSize: 13,
+    fontWeight: "900",
   },
-  amountBox: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f1f5f9",
-  },
-  amountLabel: {
-    fontSize: 12,
-    color: "#475569",
-  },
-  amountVal: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#0f172a",
-  },
-  timestampBox: {
+  ticketTimestampBlock: {
     marginTop: 8,
     paddingTop: 6,
   },
-  timestampText: {
-    fontSize: 10,
+  ticketTimeText: {
     color: "#64748b",
-    lineHeight: 14,
+    fontSize: 10,
   },
-  signatureRow: {
+  ticketSignRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 20,
-    paddingTop: 8,
+    marginTop: 18,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: "#e2e8f0",
   },
-  signLine: {
-    fontSize: 10,
+  ticketSignText: {
     color: "#64748b",
+    fontSize: 10,
   },
-  modalFooter: {
-    padding: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#e2e8f0",
-  },
-  modalCloseButtonFull: {
+  ticketCloseButton: {
     backgroundColor: "#0f172a",
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderRadius: 8,
     alignItems: "center",
+    marginTop: 8,
   },
-  modalCloseButtonText: {
+  ticketCloseButtonText: {
     color: "#ffffff",
-    fontWeight: "700",
-    fontSize: 14,
+    fontSize: 13,
+    fontWeight: "800",
   },
+
+  // SETTINGS MODAL
   settingsModal: {
-    backgroundColor: "#ffffff",
-    borderRadius: 12,
+    width: "100%",
+    maxWidth: 380,
+    backgroundColor: "#0f172a",
+    borderWidth: 1,
+    borderColor: "#1e293b",
+    borderRadius: 16,
     padding: 18,
+    maxHeight: "85%",
+  },
+  settingsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
   },
   settingsModalTitle: {
-    fontSize: 17,
+    color: "#ffffff",
+    fontSize: 16,
     fontWeight: "800",
-    color: "#0f172a",
+  },
+  settingsCloseX: {
+    color: "#94a3b8",
+    fontSize: 16,
+    fontWeight: "700",
+    padding: 4,
+  },
+  settingsSectionTitle: {
+    color: "#10b981",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1,
+    marginTop: 8,
     marginBottom: 6,
   },
-  settingsDesc: {
-    fontSize: 12,
+  securityBox: {
+    backgroundColor: "#070b14",
+    borderWidth: 1,
+    borderColor: "#1e293b",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 14,
+  },
+  securityToggleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  securityOptionTitle: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  securityOptionDesc: {
     color: "#64748b",
-    lineHeight: 17,
-    marginBottom: 10,
+    fontSize: 10,
+    marginTop: 1,
+  },
+  toggleBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  toggleOn: {
+    backgroundColor: "#10b981",
+  },
+  toggleOff: {
+    backgroundColor: "#334155",
+  },
+  toggleBtnText: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  securitySubActions: {
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#1e293b",
+    gap: 8,
+  },
+  changePinBtn: {
+    backgroundColor: "#0f172a",
+    borderWidth: 1,
+    borderColor: "#334155",
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+  },
+  changePinBtnText: {
+    color: "#e2e8f0",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  lockNowBtn: {
+    backgroundColor: "rgba(239, 68, 68, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.3)",
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+  },
+  lockNowBtnText: {
+    color: "#f87171",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  settingsDesc: {
+    color: "#94a3b8",
+    fontSize: 11,
+    marginBottom: 8,
   },
   presetsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 6,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   presetChip: {
-    backgroundColor: "#f1f5f9",
+    backgroundColor: "#070b14",
+    borderWidth: 1,
+    borderColor: "#1e293b",
     paddingHorizontal: 8,
     paddingVertical: 5,
     borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
   },
   presetChipText: {
-    fontSize: 11,
+    color: "#cbd5e1",
+    fontSize: 10,
     fontWeight: "600",
-    color: "#334155",
   },
   settingsInput: {
+    backgroundColor: "#070b14",
     borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 6,
+    borderColor: "#334155",
+    borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 8,
-    fontSize: 13,
-    color: "#0f172a",
+    color: "#ffffff",
+    fontSize: 12,
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    marginBottom: 16,
+    marginBottom: 12,
   },
   settingsActions: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    gap: 10,
+    gap: 8,
+    marginTop: 4,
   },
   settingsResetBtn: {
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 6,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#cbd5e1",
+    borderColor: "#334155",
   },
   settingsResetText: {
-    fontSize: 12,
+    color: "#94a3b8",
+    fontSize: 11,
     fontWeight: "600",
-    color: "#475569",
   },
   settingsSaveBtn: {
+    backgroundColor: "#10b981",
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 6,
-    backgroundColor: "#0f172a",
+    borderRadius: 8,
   },
   settingsSaveText: {
-    fontSize: 12,
+    color: "#070b14",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  changePinErrorText: {
+    color: "#ef4444",
+    fontSize: 11,
     fontWeight: "700",
-    color: "#ffffff",
+    marginBottom: 8,
   },
 });

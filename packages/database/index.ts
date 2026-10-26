@@ -274,15 +274,24 @@ class InMemoryStore {
 
 const mockDb = new InMemoryStore();
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs = 2500): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`DB query timed out after ${timeoutMs}ms`)), timeoutMs)
+    ),
+  ]);
+}
+
 function createResilientPrismaClient() {
   let realClient: any = null;
   const hasDbUrl = Boolean(process.env.DATABASE_URL && !process.env.DATABASE_URL.includes("localhost"));
 
-  if (hasDbUrl) {
+  if (hasDbUrl && BasePrismaClient) {
     try {
       realClient = new BasePrismaClient();
     } catch {
-      console.warn("[AI Studio] Database not connected — using mock store");
+      console.warn("[AI Studio] Database client init failed — using mock store");
     }
   }
 
@@ -290,18 +299,20 @@ function createResilientPrismaClient() {
     {},
     {
       get(_target, prop: string) {
+        if (prop === "then" || prop === "$$typeof") return undefined;
         if (prop in mockDb) {
           const mockModel = (mockDb as any)[prop];
           const realModel = realClient ? realClient[prop] : null;
 
           return new Proxy(mockModel, {
             get(_modelTarget, method: string) {
+              if (method === "then" || method === "$$typeof") return undefined;
               return async (...args: any[]) => {
                 if (realModel && typeof realModel[method] === "function") {
                   try {
-                    return await realModel[method](...args);
+                    return await withTimeout(realModel[method](...args), 2500);
                   } catch (err: any) {
-                    console.warn(`[AI Studio] DB operation ${prop}.${method} failed, using mock fallback:`, err?.message);
+                    console.warn(`[AI Studio] DB ${prop}.${method} failed or timed out:`, err?.message);
                   }
                 }
                 if (typeof mockModel[method] === "function") {
