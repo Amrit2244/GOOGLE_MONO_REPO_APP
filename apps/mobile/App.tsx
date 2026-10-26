@@ -151,7 +151,7 @@ const FALLBACK_SLIPS: Weighment[] = [
   },
 ];
 
-// Production default URL
+// Smart default URL detection
 function getDefaultApiUrl(): string {
   if (Platform.OS === "web") {
     try {
@@ -171,7 +171,7 @@ function getDefaultApiUrl(): string {
 
 type PageTab = "dashboard" | "pending" | "completed" | "item_report";
 
-// Stylized AS Monogram Logo
+// Modern Stylized AS Monogram Logo
 function ASLogo({ size = 38, isLock = false }: { size?: number; isLock?: boolean }) {
   return (
     <View
@@ -215,7 +215,7 @@ export default function App() {
   // ==========================================
   // SECURITY & LOCK STATE (PIN & BIOMETRIC)
   // ==========================================
-  const [isLocked, setIsLocked] = useState(false);
+  const [isLocked, setIsLocked] = useState(true);
   const [masterPin, setMasterPin] = useState("1234");
   const [enteredPin, setEnteredPin] = useState("");
   const [isPinLockEnabled, setIsPinLockEnabled] = useState(true);
@@ -255,7 +255,7 @@ export default function App() {
 
         if (hasHardware && isEnrolled) {
           const result = await LocalAuthentication.authenticateAsync({
-            promptMessage: "Scan Fingerprint to Unlock AS Dharamkanta",
+            promptMessage: "Scan Fingerprint to Unlock Dharamkanta Pro",
             cancelLabel: "Use 4-Digit PIN",
             fallbackLabel: "Enter PIN",
             disableDeviceFallback: false,
@@ -281,6 +281,17 @@ export default function App() {
     }, 750);
   };
 
+  // Check biometric capability on app launch
+  useEffect(() => {
+    if (isLocked && isPinLockEnabled) {
+      // Auto prompt biometric when opening app
+      const timer = setTimeout(() => {
+        handleBiometricAuth();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
   // Handle keypad digit press
   const handleDigitPress = (digit: string) => {
     setPinError("");
@@ -289,6 +300,7 @@ export default function App() {
       setEnteredPin(nextPin);
 
       if (nextPin.length === 4) {
+        // Verify PIN
         if (nextPin === masterPin) {
           setTimeout(() => {
             setIsLocked(false);
@@ -405,7 +417,7 @@ export default function App() {
     };
   }, [slips]);
 
-  // Filtered Slips for Completed tab
+  // Filtered Slips for Completed & Pending tabs
   const filteredCompletedSlips = useMemo(() => {
     return slips
       .filter((s) => s.isComplete)
@@ -419,20 +431,6 @@ export default function App() {
         return matchesSearch && matchesItem;
       });
   }, [slips, searchQuery, selectedItemName]);
-
-  // Dynamic metrics for completed slips
-  const filteredCompletedMetrics = useMemo(() => {
-    const totalWeight = filteredCompletedSlips.reduce((acc, curr) => acc + (curr.netWeight || 0), 0);
-    const totalAmount = filteredCompletedSlips.reduce((acc, curr) => {
-      const rate = curr.rate || 420;
-      return acc + (curr.netWeight || 0) * rate;
-    }, 0);
-    return {
-      count: filteredCompletedSlips.length,
-      netWeight: totalWeight.toFixed(2),
-      amountFormatted: totalAmount.toLocaleString("en-IN", { maximumFractionDigits: 0 }),
-    };
-  }, [filteredCompletedSlips]);
 
   const filteredPendingSlips = useMemo(() => {
     return slips.filter((s) => !s.isComplete);
@@ -460,7 +458,7 @@ export default function App() {
   }, [slips]);
 
   // ==========================================
-  // RENDER: SECURITY PIN & BIOMETRIC LOCK SCREEN (ATTRACTIVE DARK)
+  // RENDER: SECURITY PIN & BIOMETRIC LOCK SCREEN
   // ==========================================
   if (isLocked && isPinLockEnabled) {
     return (
@@ -588,7 +586,7 @@ export default function App() {
               <Text style={styles.bioBannerTitle}>
                 {isBioScanning ? "Scanning Fingerprint..." : "Scan Biometric Fingerprint"}
               </Text>
-              <Text style={styles.bioBannerSubtitle}>Touch ID / Face Unlock</Text>
+              <Text style={styles.bioBannerSubtitle}>Quick 1-Touch Authenticate</Text>
             </View>
           </TouchableOpacity>
 
@@ -599,7 +597,7 @@ export default function App() {
               setEnteredPin("");
             }}
           >
-            <Text style={styles.quickUnlockText}>Quick Unlock (Default: {masterPin})</Text>
+            <Text style={styles.quickUnlockText}>Quick Demo Unlock (Default: {masterPin})</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -607,13 +605,13 @@ export default function App() {
   }
 
   // ==========================================
-  // RENDER: MAIN APPLICATION (ATTRACTIVE DARK)
+  // RENDER: MAIN APPLICATION
   // ==========================================
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="light" />
 
-      {/* Modern Executive Dark Header */}
+      {/* Modern Executive Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View style={styles.headerBrandCol}>
@@ -673,35 +671,6 @@ export default function App() {
                 year: "numeric",
               })}
             </Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Persistent Live Totals Banner across all tabs */}
-      <View style={styles.universalTotalsBanner}>
-        <View style={styles.universalBoxGreen}>
-          <View style={styles.universalBoxHeader}>
-            <Text style={styles.universalBoxLabelGreen}>TOTAL NET WEIGHT</Text>
-            <View style={styles.universalBadgeGreen}>
-              <Text style={styles.universalBadgeTextGreen}>{metrics.completedCount} SLIPS</Text>
-            </View>
-          </View>
-          <View style={styles.universalValueRow}>
-            <Text style={styles.universalValueLargeGreen}>{metrics.totalNetTonnes}</Text>
-            <Text style={styles.universalUnitGreen}>MT</Text>
-          </View>
-        </View>
-
-        <View style={styles.universalBoxBlue}>
-          <View style={styles.universalBoxHeader}>
-            <Text style={styles.universalBoxLabelBlue}>TOTAL AMOUNT</Text>
-            <View style={styles.universalBadgeBlue}>
-              <Text style={styles.universalBadgeTextBlue}>INR</Text>
-            </View>
-          </View>
-          <View style={styles.universalValueRow}>
-            <Text style={styles.universalCurrencyBlue}>₹</Text>
-            <Text style={styles.universalValueLargeBlue}>{metrics.totalAmountFormatted}</Text>
           </View>
         </View>
       </View>
@@ -906,26 +875,6 @@ export default function App() {
                 );
               })}
             </ScrollView>
-
-            {/* Dynamic Filter Context Totals Bar */}
-            <View style={styles.contextSummaryStrip}>
-              <View style={styles.contextSummaryCol}>
-                <Text style={styles.contextSummaryLabel}>FILTERED NET WT</Text>
-                <Text style={styles.contextSummaryValGreen}>
-                  {filteredCompletedMetrics.netWeight} MT
-                </Text>
-              </View>
-              <View style={styles.contextDivider} />
-              <View style={styles.contextSummaryCol}>
-                <Text style={styles.contextSummaryLabel}>FILTERED AMOUNT</Text>
-                <Text style={styles.contextSummaryValBlue}>
-                  ₹{filteredCompletedMetrics.amountFormatted}
-                </Text>
-              </View>
-              <View style={styles.contextBadge}>
-                <Text style={styles.contextBadgeText}>{filteredCompletedMetrics.count} Slips</Text>
-              </View>
-            </View>
 
             <FlatList
               data={filteredCompletedSlips}
@@ -1211,7 +1160,7 @@ export default function App() {
               </View>
 
               {/* Server Connection Section */}
-              <Text style={styles.settingsSectionTitle}>WEIGHBRIDGE SERVER URL</Text>
+              <Text style={styles.settingsSectionTitle}>WEIGHBRIDGE SERVER IP</Text>
               <Text style={styles.settingsDesc}>
                 Connect to the weighbridge PC running Dharamkanta Web:
               </Text>
@@ -1225,9 +1174,9 @@ export default function App() {
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.presetChip}
-                  onPress={() => setCustomIpInput("http://192.168.68.51:3000/api/weighments")}
+                  onPress={() => setCustomIpInput("http://localhost:3000/api/weighments")}
                 >
-                  <Text style={styles.presetChipText}>Localhost IP (192.168.68.51)</Text>
+                  <Text style={styles.presetChipText}>Localhost:3000</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.presetChip}
@@ -1241,7 +1190,7 @@ export default function App() {
                 style={styles.settingsInput}
                 value={customIpInput}
                 onChangeText={setCustomIpInput}
-                placeholder="https://...trycloudflare.com/api/weighments"
+                placeholder="http://192.168.x.x:3000/api/weighments"
                 placeholderTextColor="#64748b"
                 autoCapitalize="none"
               />
@@ -1284,7 +1233,7 @@ export default function App() {
           <View style={styles.settingsModal}>
             <Text style={styles.settingsModalTitle}>Change 4-Digit Security PIN</Text>
             <Text style={styles.settingsDesc}>
-              Enter a new 4-digit code to protect this AS Dharamkanta terminal.
+              Enter a new 4-digit code to protect this Dharamkanta terminal.
             </Text>
 
             <TextInput
@@ -1431,7 +1380,7 @@ function SlipCard({ slip, onViewSlip }: { slip: Weighment; onViewSlip: () => voi
 }
 
 // ==========================================
-// STYLES (ATTRACTIVE DARK OBSIDIAN THEME)
+// STYLES
 // ==========================================
 const styles = StyleSheet.create({
   // ROOT CONTAINERS
@@ -1467,6 +1416,91 @@ const styles = StyleSheet.create({
   lockHeader: {
     alignItems: "center",
     marginTop: 20,
+  },
+  // AS LOGO BADGE STYLES
+  asBadge: {
+    backgroundColor: "#0d1527",
+    borderWidth: 1.5,
+    borderColor: "#10b981",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  asBadgeLock: {
+    backgroundColor: "#091122",
+    borderWidth: 2,
+    borderColor: "#10b981",
+    marginBottom: 14,
+  },
+  asLettersContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  asLetterA: {
+    color: "#ffffff",
+    fontWeight: "900",
+    fontSize: 16,
+    letterSpacing: -0.5,
+  },
+  asLetterS: {
+    color: "#10b981",
+    fontWeight: "900",
+    fontSize: 16,
+    letterSpacing: -0.5,
+  },
+  asLetterALock: {
+    fontSize: 26,
+    letterSpacing: -1,
+  },
+  asLetterSLock: {
+    fontSize: 26,
+    letterSpacing: -0.5,
+  },
+  asBalanceLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 1,
+    width: "70%",
+    gap: 2,
+  },
+  asBalanceLineLock: {
+    marginTop: 3,
+    width: "75%",
+  },
+  asLinePipLeft: {
+    width: 2.5,
+    height: 2.5,
+    borderRadius: 1.5,
+    backgroundColor: "#38bdf8",
+  },
+  asLineCenter: {
+    flex: 1,
+    height: 1.5,
+    backgroundColor: "#10b981",
+    borderRadius: 1,
+  },
+  asLinePipRight: {
+    width: 2.5,
+    height: 2.5,
+    borderRadius: 1.5,
+    backgroundColor: "#38bdf8",
+  },
+
+  lockShieldBadge: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "rgba(16, 185, 129, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(16, 185, 129, 0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  lockShieldIcon: {
+    fontSize: 28,
   },
   lockBrandTitle: {
     color: "#ffffff",
@@ -1642,83 +1676,12 @@ const styles = StyleSheet.create({
     textDecorationLine: "underline",
   },
 
-  // AS LOGO BADGE STYLES
-  asBadge: {
-    backgroundColor: "#0d1527",
-    borderWidth: 1.5,
-    borderColor: "#10b981",
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
-  },
-  asBadgeLock: {
-    backgroundColor: "#091122",
-    borderWidth: 2,
-    borderColor: "#10b981",
-    marginBottom: 14,
-  },
-  asLettersContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  asLetterA: {
-    color: "#ffffff",
-    fontWeight: "900",
-    fontSize: 16,
-    letterSpacing: -0.5,
-  },
-  asLetterS: {
-    color: "#10b981",
-    fontWeight: "900",
-    fontSize: 16,
-    letterSpacing: -0.5,
-  },
-  asLetterALock: {
-    fontSize: 28,
-    letterSpacing: -1,
-  },
-  asLetterSLock: {
-    fontSize: 28,
-    letterSpacing: -0.5,
-  },
-  asBalanceLine: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 1,
-    width: "70%",
-    gap: 2,
-  },
-  asBalanceLineLock: {
-    marginTop: 3,
-    width: "75%",
-  },
-  asLinePipLeft: {
-    width: 2.5,
-    height: 2.5,
-    borderRadius: 1.5,
-    backgroundColor: "#38bdf8",
-  },
-  asLineCenter: {
-    flex: 1,
-    height: 1.5,
-    backgroundColor: "#10b981",
-    borderRadius: 1,
-  },
-  asLinePipRight: {
-    width: 2.5,
-    height: 2.5,
-    borderRadius: 1.5,
-    backgroundColor: "#38bdf8",
-  },
-
   // MAIN HEADER
   header: {
     backgroundColor: "#070b14",
     paddingHorizontal: 16,
     paddingTop: Platform.OS === "android" ? 38 : 12,
-    paddingBottom: 10,
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#1e293b",
   },
@@ -1734,6 +1697,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
+  },
+  brandLogoBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "rgba(16, 185, 129, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(16, 185, 129, 0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  brandLogoIcon: {
+    fontSize: 18,
   },
   brandSubtitle: {
     color: "#10b981",
@@ -1769,7 +1745,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 8,
+    marginTop: 10,
     paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: "#1e293b",
@@ -1801,107 +1777,11 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-  // UNIVERSAL TOTALS BANNER (SHOWN AT EVERY PAGE)
-  universalTotalsBanner: {
-    flexDirection: "row",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: "#070b14",
-    borderBottomWidth: 1,
-    borderBottomColor: "#1e293b",
-    gap: 10,
-  },
-  universalBoxGreen: {
-    flex: 1,
-    backgroundColor: "rgba(16, 185, 129, 0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(16, 185, 129, 0.35)",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  universalBoxBlue: {
-    flex: 1,
-    backgroundColor: "rgba(59, 130, 246, 0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(59, 130, 246, 0.35)",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  universalBoxHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  universalBoxLabelGreen: {
-    color: "#10b981",
-    fontSize: 9,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-  universalBoxLabelBlue: {
-    color: "#60a5fa",
-    fontSize: 9,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-  universalBadgeGreen: {
-    backgroundColor: "rgba(16, 185, 129, 0.2)",
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  universalBadgeTextGreen: {
-    color: "#10b981",
-    fontSize: 8,
-    fontWeight: "800",
-  },
-  universalBadgeBlue: {
-    backgroundColor: "rgba(59, 130, 246, 0.2)",
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  universalBadgeTextBlue: {
-    color: "#60a5fa",
-    fontSize: 8,
-    fontWeight: "800",
-  },
-  universalValueRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    marginTop: 2,
-    gap: 3,
-  },
-  universalValueLargeGreen: {
-    color: "#ffffff",
-    fontSize: 20,
-    fontWeight: "900",
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-  },
-  universalUnitGreen: {
-    color: "#10b981",
-    fontSize: 11,
-    fontWeight: "800",
-  },
-  universalCurrencyBlue: {
-    color: "#60a5fa",
-    fontSize: 16,
-    fontWeight: "800",
-  },
-  universalValueLargeBlue: {
-    color: "#ffffff",
-    fontSize: 20,
-    fontWeight: "900",
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-  },
-
   // KPI STATS CARDS GRID
   kpiGrid: {
     paddingHorizontal: 16,
-    paddingTop: 12,
-    gap: 10,
+    paddingTop: 14,
+    gap: 12,
   },
   kpiCard: {
     backgroundColor: "#0f172a",
@@ -2000,14 +1880,14 @@ const styles = StyleSheet.create({
   // QUICK MODULES
   quickNavSection: {
     paddingHorizontal: 16,
-    marginTop: 16,
+    marginTop: 18,
   },
   sectionHeaderTitle: {
     color: "#94a3b8",
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1,
-    marginBottom: 8,
+    marginBottom: 10,
   },
   quickNavRow: {
     gap: 8,
@@ -2039,7 +1919,7 @@ const styles = StyleSheet.create({
   // RECENT SECTION
   recentSection: {
     paddingHorizontal: 16,
-    marginTop: 18,
+    marginTop: 20,
   },
   recentHeaderRow: {
     flexDirection: "row",
@@ -2321,58 +2201,6 @@ const styles = StyleSheet.create({
   },
   materialChipTextActive: {
     color: "#10b981",
-    fontWeight: "800",
-  },
-
-  // CONTEXT DYNAMIC SUMMARY BAR (ON COMPLETED PAGE)
-  contextSummaryStrip: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#0f172a",
-    marginHorizontal: 16,
-    marginBottom: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#1e293b",
-    gap: 12,
-  },
-  contextSummaryCol: {
-    flex: 1,
-  },
-  contextSummaryLabel: {
-    color: "#64748b",
-    fontSize: 8,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-  contextSummaryValGreen: {
-    color: "#10b981",
-    fontSize: 14,
-    fontWeight: "900",
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-  },
-  contextSummaryValBlue: {
-    color: "#60a5fa",
-    fontSize: 14,
-    fontWeight: "900",
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-  },
-  contextDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: "#1e293b",
-  },
-  contextBadge: {
-    backgroundColor: "#1e293b",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  contextBadgeText: {
-    color: "#cbd5e1",
-    fontSize: 9,
     fontWeight: "800",
   },
 
