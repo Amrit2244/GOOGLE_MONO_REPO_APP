@@ -171,7 +171,7 @@ function getDefaultApiUrl(): string {
 
 type PageTab = "dashboard" | "pending" | "completed" | "item_report";
 
-// Modern Stylized AS Monogram Logo
+// Stylized AS Monogram Logo (Light Theme Edition)
 function ASLogo({ size = 38, isLock = false }: { size?: number; isLock?: boolean }) {
   return (
     <View
@@ -180,7 +180,7 @@ function ASLogo({ size = 38, isLock = false }: { size?: number; isLock?: boolean
         {
           width: size,
           height: size,
-          borderRadius: isLock ? 20 : 12,
+          borderRadius: isLock ? 20 : 10,
         },
         isLock && styles.asBadgeLock,
       ]}
@@ -215,7 +215,7 @@ export default function App() {
   // ==========================================
   // SECURITY & LOCK STATE (PIN & BIOMETRIC)
   // ==========================================
-  const [isLocked, setIsLocked] = useState(true);
+  const [isLocked, setIsLocked] = useState(false);
   const [masterPin, setMasterPin] = useState("1234");
   const [enteredPin, setEnteredPin] = useState("");
   const [isPinLockEnabled, setIsPinLockEnabled] = useState(true);
@@ -255,7 +255,7 @@ export default function App() {
 
         if (hasHardware && isEnrolled) {
           const result = await LocalAuthentication.authenticateAsync({
-            promptMessage: "Scan Fingerprint to Unlock Dharamkanta Pro",
+            promptMessage: "Scan Fingerprint to Unlock AS Dharamkanta",
             cancelLabel: "Use 4-Digit PIN",
             fallbackLabel: "Enter PIN",
             disableDeviceFallback: false,
@@ -284,7 +284,6 @@ export default function App() {
   // Check biometric capability on app launch
   useEffect(() => {
     if (isLocked && isPinLockEnabled) {
-      // Auto prompt biometric when opening app
       const timer = setTimeout(() => {
         handleBiometricAuth();
       }, 500);
@@ -300,7 +299,6 @@ export default function App() {
       setEnteredPin(nextPin);
 
       if (nextPin.length === 4) {
-        // Verify PIN
         if (nextPin === masterPin) {
           setTimeout(() => {
             setIsLocked(false);
@@ -392,7 +390,7 @@ export default function App() {
     return ["All Items", ...Array.from(set)];
   }, [slips]);
 
-  // Aggregate Metrics
+  // Global Aggregate Metrics
   const metrics = useMemo(() => {
     const completed = slips.filter((s) => s.isComplete);
     const pending = slips.filter((s) => !s.isComplete);
@@ -417,7 +415,7 @@ export default function App() {
     };
   }, [slips]);
 
-  // Filtered Slips for Completed & Pending tabs
+  // Filtered Slips for Completed tab
   const filteredCompletedSlips = useMemo(() => {
     return slips
       .filter((s) => s.isComplete)
@@ -432,6 +430,21 @@ export default function App() {
       });
   }, [slips, searchQuery, selectedItemName]);
 
+  // Filtered Metrics for Completed tab (dynamic recalculation based on search & material filter)
+  const filteredCompletedMetrics = useMemo(() => {
+    const totalWeight = filteredCompletedSlips.reduce((acc, curr) => acc + (curr.netWeight || 0), 0);
+    const totalAmount = filteredCompletedSlips.reduce((acc, curr) => {
+      const rate = curr.rate || 420;
+      return acc + (curr.netWeight || 0) * rate;
+    }, 0);
+    return {
+      count: filteredCompletedSlips.length,
+      netWeight: totalWeight.toFixed(2),
+      amountFormatted: totalAmount.toLocaleString("en-IN", { maximumFractionDigits: 0 }),
+    };
+  }, [filteredCompletedSlips]);
+
+  // Filtered Slips for Pending tab
   const filteredPendingSlips = useMemo(() => {
     return slips.filter((s) => !s.isComplete);
   }, [slips]);
@@ -458,27 +471,27 @@ export default function App() {
   }, [slips]);
 
   // ==========================================
-  // RENDER: SECURITY PIN & BIOMETRIC LOCK SCREEN
+  // RENDER: SECURITY PIN & BIOMETRIC LOCK SCREEN (LIGHT THEME)
   // ==========================================
   if (isLocked && isPinLockEnabled) {
     return (
-      <SafeAreaView style={styles.lockContainer}>
-        <StatusBar style="light" />
+      <SafeAreaView style={styles.lockContainerLight}>
+        <StatusBar style="dark" />
 
         {/* Lock Screen Header */}
         <View style={styles.lockHeader}>
-          <ASLogo size={70} isLock />
-          <Text style={styles.lockBrandTitle}>AS DHARAMKANTA PRO</Text>
-          <Text style={styles.lockSubtitle}>Stone Crusher Live Weighbridge System</Text>
-          <View style={styles.lockSecureRow}>
-            <View style={styles.secureDot} />
-            <Text style={styles.secureText}>Protected Terminal · Plant Security</Text>
+          <ASLogo size={72} isLock />
+          <Text style={styles.lockBrandTitleLight}>AS DHARAMKANTA</Text>
+          <Text style={styles.lockSubtitleLight}>Stone Crusher Live Weighbridge System</Text>
+          <View style={styles.lockSecureRowLight}>
+            <View style={styles.secureDotLight} />
+            <Text style={styles.secureTextLight}>Protected Weighbridge Terminal</Text>
           </View>
         </View>
 
         {/* 4-Digit Indicator Display */}
         <Animated.View style={[styles.pinDisplayContainer, { transform: [{ translateX: shakeAnim }] }]}>
-          <Text style={styles.pinInstruction}>Enter 4-Digit Security PIN</Text>
+          <Text style={styles.pinInstructionLight}>Enter 4-Digit PIN to Unlock</Text>
           <View style={styles.pinDotsRow}>
             {[0, 1, 2, 3].map((index) => {
               const isFilled = enteredPin.length > index;
@@ -486,12 +499,12 @@ export default function App() {
                 <View
                   key={index}
                   style={[
-                    styles.pinDot,
-                    isFilled && styles.pinDotFilled,
-                    pinError ? styles.pinDotError : null,
+                    styles.pinDotLight,
+                    isFilled && styles.pinDotFilledLight,
+                    pinError ? styles.pinDotErrorLight : null,
                   ]}
                 >
-                  {isFilled && <View style={styles.pinDotCore} />}
+                  {isFilled && <View style={styles.pinDotCoreLight} />}
                 </View>
               );
             })}
@@ -499,78 +512,78 @@ export default function App() {
           {pinError ? (
             <Text style={styles.pinErrorText}>{pinError}</Text>
           ) : (
-            <Text style={styles.pinHintText}>Tap fingerprint or enter PIN</Text>
+            <Text style={styles.pinHintTextLight}>Tap fingerprint sensor or enter PIN</Text>
           )}
         </Animated.View>
 
-        {/* Responsive Numeric Keypad */}
+        {/* Responsive Numeric Keypad (Light Theme) */}
         <View style={styles.keypadGrid}>
           {/* Row 1: 1, 2, 3 */}
           <View style={styles.keypadRow}>
-            <TouchableOpacity style={styles.keypadButton} onPress={() => handleDigitPress("1")}>
-              <Text style={styles.keypadNumber}>1</Text>
-              <Text style={styles.keypadLetters}> </Text>
+            <TouchableOpacity style={styles.keypadButtonLight} onPress={() => handleDigitPress("1")}>
+              <Text style={styles.keypadNumberLight}>1</Text>
+              <Text style={styles.keypadLettersLight}> </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.keypadButton} onPress={() => handleDigitPress("2")}>
-              <Text style={styles.keypadNumber}>2</Text>
-              <Text style={styles.keypadLetters}>ABC</Text>
+            <TouchableOpacity style={styles.keypadButtonLight} onPress={() => handleDigitPress("2")}>
+              <Text style={styles.keypadNumberLight}>2</Text>
+              <Text style={styles.keypadLettersLight}>ABC</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.keypadButton} onPress={() => handleDigitPress("3")}>
-              <Text style={styles.keypadNumber}>3</Text>
-              <Text style={styles.keypadLetters}>DEF</Text>
+            <TouchableOpacity style={styles.keypadButtonLight} onPress={() => handleDigitPress("3")}>
+              <Text style={styles.keypadNumberLight}>3</Text>
+              <Text style={styles.keypadLettersLight}>DEF</Text>
             </TouchableOpacity>
           </View>
 
           {/* Row 2: 4, 5, 6 */}
           <View style={styles.keypadRow}>
-            <TouchableOpacity style={styles.keypadButton} onPress={() => handleDigitPress("4")}>
-              <Text style={styles.keypadNumber}>4</Text>
-              <Text style={styles.keypadLetters}>GHI</Text>
+            <TouchableOpacity style={styles.keypadButtonLight} onPress={() => handleDigitPress("4")}>
+              <Text style={styles.keypadNumberLight}>4</Text>
+              <Text style={styles.keypadLettersLight}>GHI</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.keypadButton} onPress={() => handleDigitPress("5")}>
-              <Text style={styles.keypadNumber}>5</Text>
-              <Text style={styles.keypadLetters}>JKL</Text>
+            <TouchableOpacity style={styles.keypadButtonLight} onPress={() => handleDigitPress("5")}>
+              <Text style={styles.keypadNumberLight}>5</Text>
+              <Text style={styles.keypadLettersLight}>JKL</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.keypadButton} onPress={() => handleDigitPress("6")}>
-              <Text style={styles.keypadNumber}>6</Text>
-              <Text style={styles.keypadLetters}>MNO</Text>
+            <TouchableOpacity style={styles.keypadButtonLight} onPress={() => handleDigitPress("6")}>
+              <Text style={styles.keypadNumberLight}>6</Text>
+              <Text style={styles.keypadLettersLight}>MNO</Text>
             </TouchableOpacity>
           </View>
 
           {/* Row 3: 7, 8, 9 */}
           <View style={styles.keypadRow}>
-            <TouchableOpacity style={styles.keypadButton} onPress={() => handleDigitPress("7")}>
-              <Text style={styles.keypadNumber}>7</Text>
-              <Text style={styles.keypadLetters}>PQRS</Text>
+            <TouchableOpacity style={styles.keypadButtonLight} onPress={() => handleDigitPress("7")}>
+              <Text style={styles.keypadNumberLight}>7</Text>
+              <Text style={styles.keypadLettersLight}>PQRS</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.keypadButton} onPress={() => handleDigitPress("8")}>
-              <Text style={styles.keypadNumber}>8</Text>
-              <Text style={styles.keypadLetters}>TUV</Text>
+            <TouchableOpacity style={styles.keypadButtonLight} onPress={() => handleDigitPress("8")}>
+              <Text style={styles.keypadNumberLight}>8</Text>
+              <Text style={styles.keypadLettersLight}>TUV</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.keypadButton} onPress={() => handleDigitPress("9")}>
-              <Text style={styles.keypadNumber}>9</Text>
-              <Text style={styles.keypadLetters}>WXYZ</Text>
+            <TouchableOpacity style={styles.keypadButtonLight} onPress={() => handleDigitPress("9")}>
+              <Text style={styles.keypadNumberLight}>9</Text>
+              <Text style={styles.keypadLettersLight}>WXYZ</Text>
             </TouchableOpacity>
           </View>
 
           {/* Row 4: Biometric, 0, Backspace */}
           <View style={styles.keypadRow}>
             <TouchableOpacity
-              style={[styles.keypadButton, styles.bioButton]}
+              style={[styles.keypadButtonLight, styles.bioButtonLight]}
               onPress={handleBiometricAuth}
             >
-              <Text style={styles.bioIcon}>👆</Text>
-              <Text style={styles.bioLabel}>Touch ID</Text>
+              <Text style={styles.bioIconLight}>👆</Text>
+              <Text style={styles.bioLabelLight}>Touch ID</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.keypadButton} onPress={() => handleDigitPress("0")}>
-              <Text style={styles.keypadNumber}>0</Text>
-              <Text style={styles.keypadLetters}>+</Text>
+            <TouchableOpacity style={styles.keypadButtonLight} onPress={() => handleDigitPress("0")}>
+              <Text style={styles.keypadNumberLight}>0</Text>
+              <Text style={styles.keypadLettersLight}>+</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.keypadButton} onPress={handleDeleteDigit}>
-              <Text style={styles.deleteIcon}>⌫</Text>
-              <Text style={styles.keypadLetters}>Clear</Text>
+            <TouchableOpacity style={styles.keypadButtonLight} onPress={handleDeleteDigit}>
+              <Text style={styles.deleteIconLight}>⌫</Text>
+              <Text style={styles.keypadLettersLight}>Clear</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -578,15 +591,15 @@ export default function App() {
         {/* Quick Demo Bypass / Fingerprint Sensor Modal */}
         <View style={styles.lockFooter}>
           <TouchableOpacity
-            style={styles.biometricScanBanner}
+            style={styles.biometricScanBannerLight}
             onPress={handleBiometricAuth}
           >
             <Text style={styles.bioSensorIcon}>🧬</Text>
             <View>
-              <Text style={styles.bioBannerTitle}>
+              <Text style={styles.bioBannerTitleLight}>
                 {isBioScanning ? "Scanning Fingerprint..." : "Scan Biometric Fingerprint"}
               </Text>
-              <Text style={styles.bioBannerSubtitle}>Quick 1-Touch Authenticate</Text>
+              <Text style={styles.bioBannerSubtitleLight}>Touch ID / Face Unlock</Text>
             </View>
           </TouchableOpacity>
 
@@ -597,7 +610,7 @@ export default function App() {
               setEnteredPin("");
             }}
           >
-            <Text style={styles.quickUnlockText}>Quick Demo Unlock (Default: {masterPin})</Text>
+            <Text style={styles.quickUnlockTextLight}>Quick Unlock (Default: {masterPin})</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -605,21 +618,21 @@ export default function App() {
   }
 
   // ==========================================
-  // RENDER: MAIN APPLICATION
+  // RENDER: MAIN APPLICATION (LIGHT THEME)
   // ==========================================
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="light" />
+    <SafeAreaView style={styles.safeAreaLight}>
+      <StatusBar style="dark" />
 
-      {/* Modern Executive Header */}
-      <View style={styles.header}>
+      {/* Clean Light Top Header */}
+      <View style={styles.headerLight}>
         <View style={styles.headerTop}>
           <View style={styles.headerBrandCol}>
             <View style={styles.brandRow}>
               <ASLogo size={40} />
               <View>
-                <Text style={styles.brandSubtitle}>STONE CRUSHER AUTOMATION</Text>
-                <Text style={styles.headerTitle}>AS DHARAMKANTA</Text>
+                <Text style={styles.brandSubtitleLight}>STONE CRUSHER AUTOMATION</Text>
+                <Text style={styles.headerTitleLight}>AS DHARAMKANTA</Text>
               </View>
             </View>
           </View>
@@ -628,7 +641,7 @@ export default function App() {
           <View style={styles.headerActionsRow}>
             {/* Lock Button */}
             <TouchableOpacity
-              style={styles.headerActionBtn}
+              style={styles.headerActionBtnLight}
               onPress={() => setIsLocked(true)}
               accessibilityLabel="Lock Terminal"
             >
@@ -637,7 +650,7 @@ export default function App() {
 
             {/* Refresh Button */}
             <TouchableOpacity
-              style={styles.headerActionBtn}
+              style={styles.headerActionBtnLight}
               onPress={onRefresh}
               accessibilityLabel="Refresh Data"
             >
@@ -646,7 +659,7 @@ export default function App() {
 
             {/* Settings */}
             <TouchableOpacity
-              style={styles.headerActionBtn}
+              style={styles.headerActionBtnLight}
               onPress={() => setIsSettingsOpen(true)}
               accessibilityLabel="Settings"
             >
@@ -656,15 +669,15 @@ export default function App() {
         </View>
 
         {/* Live Status Strip */}
-        <View style={styles.statusStrip}>
+        <View style={styles.statusStripLight}>
           <View style={styles.statusItemLeft}>
             <View style={[styles.livePulseDot, isOfflineMode && styles.offlinePulseDot]} />
-            <Text style={styles.statusStripText}>
-              {isOfflineMode ? "OFFLINE / LOCAL CACHE" : "SCALE SERVER CONNECTED"}
+            <Text style={styles.statusStripTextLight}>
+              {isOfflineMode ? "OFFLINE / LOCAL CACHE" : "SCALE SERVER ONLINE"}
             </Text>
           </View>
           <View style={styles.statusItemRight}>
-            <Text style={styles.todayDateText}>
+            <Text style={styles.todayDateTextLight}>
               {new Date().toLocaleDateString("en-IN", {
                 day: "2-digit",
                 month: "short",
@@ -675,104 +688,138 @@ export default function App() {
         </View>
       </View>
 
+      {/* ============================================================== */}
+      {/* UNIVERSAL PERSISTENT TOTALS BANNER (NET WEIGHT & TOTAL AMOUNT)  */}
+      {/* Visible at the top of EVERY page for instant management vision */}
+      {/* ============================================================== */}
+      <View style={styles.universalTotalsBanner}>
+        {/* Net Weight Box */}
+        <View style={styles.universalBoxGreen}>
+          <View style={styles.universalBoxHeader}>
+            <Text style={styles.universalBoxLabelGreen}>TOTAL NET WEIGHT</Text>
+            <View style={styles.universalBadgeGreen}>
+              <Text style={styles.universalBadgeTextGreen}>{metrics.completedCount} SLIPS</Text>
+            </View>
+          </View>
+          <View style={styles.universalValueRow}>
+            <Text style={styles.universalValueLargeGreen}>{metrics.totalNetTonnes}</Text>
+            <Text style={styles.universalUnitGreen}>MT</Text>
+          </View>
+        </View>
+
+        {/* Total Billed Amount Box */}
+        <View style={styles.universalBoxBlue}>
+          <View style={styles.universalBoxHeader}>
+            <Text style={styles.universalBoxLabelBlue}>TOTAL AMOUNT</Text>
+            <View style={styles.universalBadgeBlue}>
+              <Text style={styles.universalBadgeTextBlue}>INR</Text>
+            </View>
+          </View>
+          <View style={styles.universalValueRow}>
+            <Text style={styles.universalCurrencyBlue}>₹</Text>
+            <Text style={styles.universalValueLargeBlue}>{metrics.totalAmountFormatted}</Text>
+          </View>
+        </View>
+      </View>
+
       {/* Main Content Area */}
-      <View style={styles.contentArea}>
+      <View style={styles.contentAreaLight}>
         {/* TAB 1: EXECUTIVE DASHBOARD */}
         {currentPage === "dashboard" && (
           <ScrollView
             style={styles.tabContent}
             contentContainerStyle={styles.scrollContent}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10b981" />}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#059669" />}
           >
-            {/* 4 Glowing Metric Cards */}
+            {/* 4 Light-Themed KPI Cards */}
             <View style={styles.kpiGrid}>
               {/* Card 1: Dispatched Net Weight */}
-              <View style={[styles.kpiCard, styles.kpiCardEmerald]}>
+              <View style={[styles.kpiCardLight, styles.kpiCardEmeraldLight]}>
                 <View style={styles.kpiHeaderRow}>
-                  <Text style={styles.kpiLabel}>DISPATCHED TODAY</Text>
-                  <Text style={styles.kpiBadgeEmerald}>{metrics.completedCount} SLIPS</Text>
+                  <Text style={styles.kpiLabelLight}>DISPATCHED TODAY</Text>
+                  <Text style={styles.kpiBadgeEmeraldLight}>{metrics.completedCount} SLIPS</Text>
                 </View>
                 <View style={styles.kpiValueRow}>
-                  <Text style={styles.kpiValueLarge}>{metrics.totalNetTonnes}</Text>
-                  <Text style={styles.kpiUnit}>MT</Text>
+                  <Text style={styles.kpiValueLargeLight}>{metrics.totalNetTonnes}</Text>
+                  <Text style={styles.kpiUnitLight}>MT</Text>
                 </View>
-                <Text style={styles.kpiSubtext}>Net Crushed Stone Dispatched</Text>
+                <Text style={styles.kpiSubtextLight}>Net Crushed Stone Dispatched</Text>
               </View>
 
               {/* Card 2: Revenue */}
-              <View style={[styles.kpiCard, styles.kpiCardBlue]}>
+              <View style={[styles.kpiCardLight, styles.kpiCardBlueLight]}>
                 <View style={styles.kpiHeaderRow}>
-                  <Text style={styles.kpiLabel}>TOTAL BILLED VALUE</Text>
-                  <Text style={styles.kpiBadgeBlue}>INR</Text>
+                  <Text style={styles.kpiLabelLight}>TOTAL BILLED VALUE</Text>
+                  <Text style={styles.kpiBadgeBlueLight}>INR</Text>
                 </View>
                 <View style={styles.kpiValueRow}>
-                  <Text style={styles.kpiCurrency}>₹</Text>
-                  <Text style={styles.kpiValueLarge}>{metrics.totalAmountFormatted}</Text>
+                  <Text style={styles.kpiCurrencyLight}>₹</Text>
+                  <Text style={styles.kpiValueLargeLight}>{metrics.totalAmountFormatted}</Text>
                 </View>
-                <Text style={styles.kpiSubtext}>Estimated Material Invoiced</Text>
+                <Text style={styles.kpiSubtextLight}>Estimated Material Invoiced</Text>
               </View>
 
               {/* Card 3: In-Plant Trucks */}
-              <View style={[styles.kpiCard, styles.kpiCardAmber]}>
+              <View style={[styles.kpiCardLight, styles.kpiCardAmberLight]}>
                 <View style={styles.kpiHeaderRow}>
-                  <Text style={styles.kpiLabel}>IN-PLANT VEHICLES</Text>
-                  <Text style={styles.kpiBadgeAmber}>1ST WEIGHT</Text>
+                  <Text style={styles.kpiLabelLight}>IN-PLANT VEHICLES</Text>
+                  <Text style={styles.kpiBadgeAmberLight}>1ST WEIGHT</Text>
                 </View>
                 <View style={styles.kpiValueRow}>
-                  <Text style={styles.kpiValueLarge}>{metrics.pendingCount}</Text>
-                  <Text style={styles.kpiUnit}>TRUCKS</Text>
+                  <Text style={styles.kpiValueLargeLight}>{metrics.pendingCount}</Text>
+                  <Text style={styles.kpiUnitLight}>TRUCKS</Text>
                 </View>
-                <Text style={styles.kpiSubtext}>Awaiting Final Tare/Gross</Text>
+                <Text style={styles.kpiSubtextLight}>Awaiting Final Tare/Gross</Text>
               </View>
 
               {/* Card 4: Tally ERP Sync */}
-              <View style={[styles.kpiCard, styles.kpiCardPurple]}>
+              <View style={[styles.kpiCardLight, styles.kpiCardPurpleLight]}>
                 <View style={styles.kpiHeaderRow}>
-                  <Text style={styles.kpiLabel}>TALLY ERP SYNC</Text>
-                  <Text style={styles.kpiBadgePurple}>ACCOUNTING</Text>
+                  <Text style={styles.kpiLabelLight}>TALLY ERP SYNC</Text>
+                  <Text style={styles.kpiBadgePurpleLight}>ACCOUNTING</Text>
                 </View>
                 <View style={styles.kpiValueRow}>
-                  <Text style={styles.kpiValueLarge}>{metrics.tallySyncedCount}</Text>
-                  <Text style={styles.kpiUnit}>/{metrics.completedCount}</Text>
+                  <Text style={styles.kpiValueLargeLight}>{metrics.tallySyncedCount}</Text>
+                  <Text style={styles.kpiUnitLight}>/{metrics.completedCount}</Text>
                 </View>
-                <Text style={styles.kpiSubtext}>Vouchers Pushed Automatically</Text>
+                <Text style={styles.kpiSubtextLight}>Vouchers Pushed Automatically</Text>
               </View>
             </View>
 
             {/* Quick Action Navigation Buttons */}
             <View style={styles.quickNavSection}>
-              <Text style={styles.sectionHeaderTitle}>QUICK MODULES</Text>
+              <Text style={styles.sectionHeaderTitleLight}>QUICK MODULES</Text>
               <View style={styles.quickNavRow}>
                 <TouchableOpacity
-                  style={styles.quickNavCard}
+                  style={styles.quickNavCardLight}
                   onPress={() => setCurrentPage("pending")}
                 >
                   <Text style={styles.quickNavIcon}>🚛</Text>
                   <View>
-                    <Text style={styles.quickNavTitle}>Pending Trucks ({metrics.pendingCount})</Text>
-                    <Text style={styles.quickNavDesc}>Vehicles currently loading/unloading</Text>
+                    <Text style={styles.quickNavTitleLight}>In-Plant Trucks ({metrics.pendingCount})</Text>
+                    <Text style={styles.quickNavDescLight}>Vehicles currently loading/unloading</Text>
                   </View>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={styles.quickNavCard}
+                  style={styles.quickNavCardLight}
                   onPress={() => setCurrentPage("completed")}
                 >
                   <Text style={styles.quickNavIcon}>📑</Text>
                   <View>
-                    <Text style={styles.quickNavTitle}>Weight Records ({metrics.completedCount})</Text>
-                    <Text style={styles.quickNavDesc}>View slips & print duplicate tickets</Text>
+                    <Text style={styles.quickNavTitleLight}>Weight Records ({metrics.completedCount})</Text>
+                    <Text style={styles.quickNavDescLight}>View slips & print duplicate tickets</Text>
                   </View>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={styles.quickNavCard}
+                  style={styles.quickNavCardLight}
                   onPress={() => setCurrentPage("item_report")}
                 >
                   <Text style={styles.quickNavIcon}>📊</Text>
                   <View>
-                    <Text style={styles.quickNavTitle}>Material Report</Text>
-                    <Text style={styles.quickNavDesc}>10mm, 20mm, GSB, Dust Tonnage</Text>
+                    <Text style={styles.quickNavTitleLight}>Material Report</Text>
+                    <Text style={styles.quickNavDescLight}>10mm, 20mm, GSB, Dust Tonnage</Text>
                   </View>
                 </TouchableOpacity>
               </View>
@@ -781,9 +828,9 @@ export default function App() {
             {/* Recent Slips Feed */}
             <View style={styles.recentSection}>
               <View style={styles.recentHeaderRow}>
-                <Text style={styles.sectionHeaderTitle}>LATEST WEIGHBRIDGE SLIPS</Text>
+                <Text style={styles.sectionHeaderTitleLight}>LATEST WEIGHBRIDGE SLIPS</Text>
                 <TouchableOpacity onPress={() => setCurrentPage("completed")}>
-                  <Text style={styles.viewAllText}>View All →</Text>
+                  <Text style={styles.viewAllTextLight}>View All →</Text>
                 </TouchableOpacity>
               </View>
 
@@ -797,28 +844,29 @@ export default function App() {
         {/* TAB 2: PENDING VEHICLES (1ST WEIGHT) */}
         {currentPage === "pending" && (
           <View style={styles.tabContent}>
-            <View style={styles.listHeaderBar}>
+            {/* Page Header Bar */}
+            <View style={styles.listHeaderBarLight}>
               <View>
-                <Text style={styles.listHeaderTitle}>Vehicles Inside Crusher Plant</Text>
-                <Text style={styles.listHeaderSub}>
+                <Text style={styles.listHeaderTitleLight}>Vehicles Inside Crusher Plant</Text>
+                <Text style={styles.listHeaderSubLight}>
                   {filteredPendingSlips.length} trucks awaiting 2nd weighing (Gross/Tare)
                 </Text>
               </View>
-              <View style={styles.pendingBadge}>
-                <Text style={styles.pendingBadgeText}>{filteredPendingSlips.length} ACTIVE</Text>
+              <View style={styles.pendingBadgeLight}>
+                <Text style={styles.pendingBadgeTextLight}>{filteredPendingSlips.length} ACTIVE</Text>
               </View>
             </View>
 
             <FlatList
               data={filteredPendingSlips}
               keyExtractor={(item) => item.id}
-              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#f59e0b" />}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#d97706" />}
               contentContainerStyle={styles.listScrollContent}
               ListEmptyComponent={
-                <View style={styles.emptyContainer}>
+                <View style={styles.emptyContainerLight}>
                   <Text style={styles.emptyIcon}>🎉</Text>
-                  <Text style={styles.emptyTitle}>No Pending Vehicles</Text>
-                  <Text style={styles.emptyText}>All vehicles have completed their 2nd weighing</Text>
+                  <Text style={styles.emptyTitleLight}>No Pending Vehicles</Text>
+                  <Text style={styles.emptyTextLight}>All trucks have completed their second weighing</Text>
                 </View>
               }
               renderItem={({ item }) => (
@@ -834,16 +882,16 @@ export default function App() {
             {/* Search Input Bar */}
             <View style={styles.searchBarWrapper}>
               <TextInput
-                style={styles.searchInput}
+                style={styles.searchInputLight}
                 placeholder="Search Truck No, Party, Slip #..."
-                placeholderTextColor="#64748b"
+                placeholderTextColor="#94a3b8"
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 clearButtonMode="while-editing"
               />
               {searchQuery.length > 0 && (
                 <TouchableOpacity style={styles.clearSearchBtn} onPress={() => setSearchQuery("")}>
-                  <Text style={styles.clearSearchIcon}>✕</Text>
+                  <Text style={styles.clearSearchIconLight}>✕</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -860,13 +908,13 @@ export default function App() {
                 return (
                   <TouchableOpacity
                     key={mat}
-                    style={[styles.materialChip, isSelected && styles.materialChipActive]}
+                    style={[styles.materialChipLight, isSelected && styles.materialChipActiveLight]}
                     onPress={() => setSelectedItemName(mat)}
                   >
                     <Text
                       style={[
-                        styles.materialChipText,
-                        isSelected && styles.materialChipTextActive,
+                        styles.materialChipTextLight,
+                        isSelected && styles.materialChipTextActiveLight,
                       ]}
                     >
                       {mat}
@@ -876,16 +924,36 @@ export default function App() {
               })}
             </ScrollView>
 
+            {/* Filtered Context Summary (Dynamically updates if search or chip is applied) */}
+            <View style={styles.contextSummaryStrip}>
+              <View style={styles.contextSummaryCol}>
+                <Text style={styles.contextSummaryLabel}>FILTERED NET WT</Text>
+                <Text style={styles.contextSummaryValGreen}>
+                  {filteredCompletedMetrics.netWeight} MT
+                </Text>
+              </View>
+              <View style={styles.contextDivider} />
+              <View style={styles.contextSummaryCol}>
+                <Text style={styles.contextSummaryLabel}>FILTERED AMOUNT</Text>
+                <Text style={styles.contextSummaryValBlue}>
+                  ₹{filteredCompletedMetrics.amountFormatted}
+                </Text>
+              </View>
+              <View style={styles.contextBadge}>
+                <Text style={styles.contextBadgeText}>{filteredCompletedMetrics.count} Records</Text>
+              </View>
+            </View>
+
             <FlatList
               data={filteredCompletedSlips}
               keyExtractor={(item) => item.id}
-              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10b981" />}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#059669" />}
               contentContainerStyle={styles.listScrollContent}
               ListEmptyComponent={
-                <View style={styles.emptyContainer}>
+                <View style={styles.emptyContainerLight}>
                   <Text style={styles.emptyIcon}>🔍</Text>
-                  <Text style={styles.emptyTitle}>No Matching Slips</Text>
-                  <Text style={styles.emptyText}>Try adjusting your search or material filter</Text>
+                  <Text style={styles.emptyTitleLight}>No Matching Slips</Text>
+                  <Text style={styles.emptyTextLight}>Try adjusting your search or material filter</Text>
                 </View>
               }
               renderItem={({ item }) => (
@@ -900,47 +968,47 @@ export default function App() {
           <ScrollView
             style={styles.tabContent}
             contentContainerStyle={styles.scrollContent}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#06b6d4" />}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#0284c7" />}
           >
-            <View style={styles.reportSummaryBanner}>
-              <Text style={styles.reportBannerTitle}>Crusher Material Dispatch Summary</Text>
-              <Text style={styles.reportBannerDesc}>
+            <View style={styles.reportSummaryBannerLight}>
+              <Text style={styles.reportBannerTitleLight}>Crusher Material Dispatch Summary</Text>
+              <Text style={styles.reportBannerDescLight}>
                 Item-wise tonnage and billing breakdown for today
               </Text>
-              <View style={styles.reportTotalRow}>
+              <View style={styles.reportTotalRowLight}>
                 <View style={styles.reportTotalCol}>
-                  <Text style={styles.reportTotalLabel}>TOTAL TONNES</Text>
-                  <Text style={styles.reportTotalVal}>{metrics.totalNetTonnes} MT</Text>
+                  <Text style={styles.reportTotalLabelLight}>TOTAL NET WEIGHT</Text>
+                  <Text style={styles.reportTotalValGreen}>{metrics.totalNetTonnes} MT</Text>
                 </View>
-                <View style={styles.reportDividerVert} />
+                <View style={styles.reportDividerVertLight} />
                 <View style={styles.reportTotalCol}>
-                  <Text style={styles.reportTotalLabel}>TOTAL REVENUE</Text>
-                  <Text style={styles.reportTotalVal}>₹{metrics.totalAmountFormatted}</Text>
+                  <Text style={styles.reportTotalLabelLight}>TOTAL AMOUNT</Text>
+                  <Text style={styles.reportTotalValBlue}>₹{metrics.totalAmountFormatted}</Text>
                 </View>
               </View>
             </View>
 
             <View style={styles.materialsList}>
               {materialBreakdown.map((item, idx) => (
-                <View key={item.itemName} style={styles.materialCard}>
+                <View key={item.itemName} style={styles.materialCardLight}>
                   <View style={styles.materialCardHeader}>
-                    <View style={styles.materialRankBadge}>
-                      <Text style={styles.materialRankText}>#{idx + 1}</Text>
+                    <View style={styles.materialRankBadgeLight}>
+                      <Text style={styles.materialRankTextLight}>#{idx + 1}</Text>
                     </View>
                     <View style={styles.materialTitleCol}>
-                      <Text style={styles.materialName}>{item.itemName}</Text>
-                      <Text style={styles.materialTruckCount}>{item.count} Truck Loads Dispatched</Text>
+                      <Text style={styles.materialNameLight}>{item.itemName}</Text>
+                      <Text style={styles.materialTruckCountLight}>{item.count} Truck Loads Dispatched</Text>
                     </View>
                   </View>
 
-                  <View style={styles.materialMetricsRow}>
+                  <View style={styles.materialMetricsRowLight}>
                     <View style={styles.matMetricBox}>
-                      <Text style={styles.matMetricLabel}>NET WEIGHT</Text>
-                      <Text style={styles.matMetricValGreen}>{item.totalWeightStr} MT</Text>
+                      <Text style={styles.matMetricLabelLight}>NET WEIGHT</Text>
+                      <Text style={styles.matMetricValGreenLight}>{item.totalWeightStr} MT</Text>
                     </View>
                     <View style={styles.matMetricBox}>
-                      <Text style={styles.matMetricLabel}>ESTIMATED REVENUE</Text>
-                      <Text style={styles.matMetricValBlue}>₹{item.totalRevenueStr}</Text>
+                      <Text style={styles.matMetricLabelLight}>ESTIMATED REVENUE</Text>
+                      <Text style={styles.matMetricValBlueLight}>₹{item.totalRevenueStr}</Text>
                     </View>
                   </View>
                 </View>
@@ -950,8 +1018,8 @@ export default function App() {
         )}
       </View>
 
-      {/* Floating Modern Bottom Navigation Bar */}
-      <View style={styles.bottomNavBar}>
+      {/* Floating Clean Light Bottom Navigation Bar */}
+      <View style={styles.bottomNavBarLight}>
         <TouchableOpacity
           style={styles.navTab}
           onPress={() => setCurrentPage("dashboard")}
@@ -959,7 +1027,7 @@ export default function App() {
           <Text style={[styles.navTabIcon, currentPage === "dashboard" && styles.navTabIconActive]}>
             📊
           </Text>
-          <Text style={[styles.navTabLabel, currentPage === "dashboard" && styles.navTabLabelActive]}>
+          <Text style={[styles.navTabLabelLight, currentPage === "dashboard" && styles.navTabLabelActiveLight]}>
             Overview
           </Text>
         </TouchableOpacity>
@@ -973,12 +1041,12 @@ export default function App() {
               🚛
             </Text>
             {metrics.pendingCount > 0 && (
-              <View style={styles.tabBadgeAmber}>
-                <Text style={styles.tabBadgeText}>{metrics.pendingCount}</Text>
+              <View style={styles.tabBadgeAmberLight}>
+                <Text style={styles.tabBadgeTextLight}>{metrics.pendingCount}</Text>
               </View>
             )}
           </View>
-          <Text style={[styles.navTabLabel, currentPage === "pending" && styles.navTabLabelActive]}>
+          <Text style={[styles.navTabLabelLight, currentPage === "pending" && styles.navTabLabelActiveLight]}>
             In-Plant ({metrics.pendingCount})
           </Text>
         </TouchableOpacity>
@@ -990,7 +1058,7 @@ export default function App() {
           <Text style={[styles.navTabIcon, currentPage === "completed" && styles.navTabIconActive]}>
             📑
           </Text>
-          <Text style={[styles.navTabLabel, currentPage === "completed" && styles.navTabLabelActive]}>
+          <Text style={[styles.navTabLabelLight, currentPage === "completed" && styles.navTabLabelActiveLight]}>
             Slips ({metrics.completedCount})
           </Text>
         </TouchableOpacity>
@@ -1002,14 +1070,14 @@ export default function App() {
           <Text style={[styles.navTabIcon, currentPage === "item_report" && styles.navTabIconActive]}>
             📈
           </Text>
-          <Text style={[styles.navTabLabel, currentPage === "item_report" && styles.navTabLabelActive]}>
+          <Text style={[styles.navTabLabelLight, currentPage === "item_report" && styles.navTabLabelActiveLight]}>
             Materials
           </Text>
         </TouchableOpacity>
       </View>
 
       {/* ========================================== */}
-      {/* MODAL 1: WEIGHMENT SLIP PREVIEW */}
+      {/* MODAL 1: WEIGHMENT SLIP PREVIEW (CLEAN)    */}
       {/* ========================================== */}
       <Modal
         visible={Boolean(selectedSlip)}
@@ -1018,7 +1086,7 @@ export default function App() {
         onRequestClose={() => setSelectedSlip(null)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.ticketCardModal}>
+          <View style={styles.ticketCardModalLight}>
             <View style={styles.ticketHeader}>
               <Text style={styles.ticketPlantName}>AS STONE CRUSHER & WEIGHBRIDGE</Text>
               <Text style={styles.ticketPlantSub}>Industrial Weighbridge · Approved Scale</Text>
@@ -1100,7 +1168,7 @@ export default function App() {
       </Modal>
 
       {/* ========================================== */}
-      {/* MODAL 2: SETTINGS & SECURITY PREFERENCES */}
+      {/* MODAL 2: SETTINGS & SECURITY (LIGHT THEME) */}
       {/* ========================================== */}
       <Modal
         visible={isSettingsOpen}
@@ -1109,25 +1177,25 @@ export default function App() {
         onRequestClose={() => setIsSettingsOpen(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.settingsModal}>
+          <View style={styles.settingsModalLight}>
             <View style={styles.settingsHeader}>
-              <Text style={styles.settingsModalTitle}>Settings & Security</Text>
+              <Text style={styles.settingsModalTitleLight}>Settings & Security</Text>
               <TouchableOpacity onPress={() => setIsSettingsOpen(false)}>
-                <Text style={styles.settingsCloseX}>✕</Text>
+                <Text style={styles.settingsCloseXLight}>✕</Text>
               </TouchableOpacity>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
               {/* Security Section */}
-              <Text style={styles.settingsSectionTitle}>TERMINAL SECURITY</Text>
-              <View style={styles.securityBox}>
+              <Text style={styles.settingsSectionTitleLight}>TERMINAL SECURITY</Text>
+              <View style={styles.securityBoxLight}>
                 <View style={styles.securityToggleRow}>
                   <View>
-                    <Text style={styles.securityOptionTitle}>4-Digit & Biometric Lock</Text>
-                    <Text style={styles.securityOptionDesc}>Require PIN or Fingerprint to access app</Text>
+                    <Text style={styles.securityOptionTitleLight}>4-Digit & Biometric Lock</Text>
+                    <Text style={styles.securityOptionDescLight}>Require PIN or Fingerprint to access app</Text>
                   </View>
                   <TouchableOpacity
-                    style={[styles.toggleBtn, isPinLockEnabled ? styles.toggleOn : styles.toggleOff]}
+                    style={[styles.toggleBtn, isPinLockEnabled ? styles.toggleOnLight : styles.toggleOffLight]}
                     onPress={() => setIsPinLockEnabled(!isPinLockEnabled)}
                   >
                     <Text style={styles.toggleBtnText}>{isPinLockEnabled ? "ON" : "OFF"}</Text>
@@ -1135,76 +1203,76 @@ export default function App() {
                 </View>
 
                 {isPinLockEnabled && (
-                  <View style={styles.securitySubActions}>
+                  <View style={styles.securitySubActionsLight}>
                     <TouchableOpacity
-                      style={styles.changePinBtn}
+                      style={styles.changePinBtnLight}
                       onPress={() => {
                         setShowChangePinModal(true);
                         setIsSettingsOpen(false);
                       }}
                     >
-                      <Text style={styles.changePinBtnText}>🔑 Change 4-Digit PIN (Current: {masterPin})</Text>
+                      <Text style={styles.changePinBtnTextLight}>🔑 Change 4-Digit PIN (Current: {masterPin})</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
-                      style={styles.lockNowBtn}
+                      style={styles.lockNowBtnLight}
                       onPress={() => {
                         setIsSettingsOpen(false);
                         setIsLocked(true);
                       }}
                     >
-                      <Text style={styles.lockNowBtnText}>🔒 Lock Terminal Immediately</Text>
+                      <Text style={styles.lockNowBtnTextLight}>🔒 Lock Terminal Immediately</Text>
                     </TouchableOpacity>
                   </View>
                 )}
               </View>
 
               {/* Server Connection Section */}
-              <Text style={styles.settingsSectionTitle}>WEIGHBRIDGE SERVER IP</Text>
-              <Text style={styles.settingsDesc}>
-                Connect to the weighbridge PC running Dharamkanta Web:
+              <Text style={styles.settingsSectionTitleLight}>WEIGHBRIDGE SERVER URL</Text>
+              <Text style={styles.settingsDescLight}>
+                Production Cloudflare Tunnel or Local LAN IP:
               </Text>
 
               <View style={styles.presetsRow}>
                 <TouchableOpacity
-                  style={styles.presetChip}
+                  style={styles.presetChipLight}
                   onPress={() => setCustomIpInput("https://list-introductory-estimates-zoning.trycloudflare.com/api/weighments")}
                 >
-                  <Text style={styles.presetChipText}>Cloudflare Production Tunnel</Text>
+                  <Text style={styles.presetChipTextLight}>Cloudflare Production Tunnel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={styles.presetChip}
-                  onPress={() => setCustomIpInput("http://localhost:3000/api/weighments")}
+                  style={styles.presetChipLight}
+                  onPress={() => setCustomIpInput("http://192.168.68.51:3000/api/weighments")}
                 >
-                  <Text style={styles.presetChipText}>Localhost:3000</Text>
+                  <Text style={styles.presetChipTextLight}>Localhost IP (192.168.68.51)</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={styles.presetChip}
+                  style={styles.presetChipLight}
                   onPress={() => setCustomIpInput("/api/weighments")}
                 >
-                  <Text style={styles.presetChipText}>Same Host (/api)</Text>
+                  <Text style={styles.presetChipTextLight}>Same Host (/api)</Text>
                 </TouchableOpacity>
               </View>
 
               <TextInput
-                style={styles.settingsInput}
+                style={styles.settingsInputLight}
                 value={customIpInput}
                 onChangeText={setCustomIpInput}
-                placeholder="http://192.168.x.x:3000/api/weighments"
-                placeholderTextColor="#64748b"
+                placeholder="https://...trycloudflare.com/api/weighments"
+                placeholderTextColor="#94a3b8"
                 autoCapitalize="none"
               />
 
               <View style={styles.settingsActions}>
                 <TouchableOpacity
-                  style={styles.settingsResetBtn}
+                  style={styles.settingsResetBtnLight}
                   onPress={() => setCustomIpInput(getDefaultApiUrl())}
                 >
-                  <Text style={styles.settingsResetText}>Reset Default</Text>
+                  <Text style={styles.settingsResetTextLight}>Reset Default</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={styles.settingsSaveBtn}
+                  style={styles.settingsSaveBtnLight}
                   onPress={() => {
                     setApiUrl(customIpInput.trim());
                     setIsSettingsOpen(false);
@@ -1212,7 +1280,7 @@ export default function App() {
                     fetchSlips();
                   }}
                 >
-                  <Text style={styles.settingsSaveText}>Connect Server</Text>
+                  <Text style={styles.settingsSaveTextLight}>Connect Server</Text>
                 </TouchableOpacity>
               </View>
             </ScrollView>
@@ -1221,7 +1289,7 @@ export default function App() {
       </Modal>
 
       {/* ========================================== */}
-      {/* MODAL 3: CHANGE PIN DIALOG */}
+      {/* MODAL 3: CHANGE PIN DIALOG (LIGHT)        */}
       {/* ========================================== */}
       <Modal
         visible={showChangePinModal}
@@ -1230,29 +1298,29 @@ export default function App() {
         onRequestClose={() => setShowChangePinModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.settingsModal}>
-            <Text style={styles.settingsModalTitle}>Change 4-Digit Security PIN</Text>
-            <Text style={styles.settingsDesc}>
-              Enter a new 4-digit code to protect this Dharamkanta terminal.
+          <View style={styles.settingsModalLight}>
+            <Text style={styles.settingsModalTitleLight}>Change 4-Digit Security PIN</Text>
+            <Text style={styles.settingsDescLight}>
+              Enter a new 4-digit code to protect this AS Dharamkanta terminal.
             </Text>
 
             <TextInput
-              style={styles.settingsInput}
+              style={styles.settingsInputLight}
               value={newPinInput}
               onChangeText={setNewPinInput}
               placeholder="Enter new 4 digits"
-              placeholderTextColor="#64748b"
+              placeholderTextColor="#94a3b8"
               keyboardType="number-pad"
               maxLength={4}
               secureTextEntry
             />
 
             <TextInput
-              style={styles.settingsInput}
+              style={styles.settingsInputLight}
               value={confirmPinInput}
               onChangeText={setConfirmPinInput}
               placeholder="Confirm new 4 digits"
-              placeholderTextColor="#64748b"
+              placeholderTextColor="#94a3b8"
               keyboardType="number-pad"
               maxLength={4}
               secureTextEntry
@@ -1264,7 +1332,7 @@ export default function App() {
 
             <View style={styles.settingsActions}>
               <TouchableOpacity
-                style={styles.settingsResetBtn}
+                style={styles.settingsResetBtnLight}
                 onPress={() => {
                   setShowChangePinModal(false);
                   setNewPinInput("");
@@ -1272,11 +1340,11 @@ export default function App() {
                   setChangePinError("");
                 }}
               >
-                <Text style={styles.settingsResetText}>Cancel</Text>
+                <Text style={styles.settingsResetTextLight}>Cancel</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.settingsSaveBtn} onPress={handleSaveNewPin}>
-                <Text style={styles.settingsSaveText}>Save PIN</Text>
+              <TouchableOpacity style={styles.settingsSaveBtnLight} onPress={handleSaveNewPin}>
+                <Text style={styles.settingsSaveTextLight}>Save PIN</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1287,7 +1355,7 @@ export default function App() {
 }
 
 // ==========================================
-// COMPONENT: SLIP CARD
+// COMPONENT: SLIP CARD (LIGHT THEME)
 // ==========================================
 function SlipCard({ slip, onViewSlip }: { slip: Weighment; onViewSlip: () => void }) {
   const isComplete = slip.isComplete;
@@ -1297,28 +1365,28 @@ function SlipCard({ slip, onViewSlip }: { slip: Weighment; onViewSlip: () => voi
   });
 
   return (
-    <View style={styles.slipCard}>
+    <View style={styles.slipCardLight}>
       {/* Card Header: Slip #, Vehicle # & Status Badge */}
       <View style={styles.slipCardHeader}>
         <View style={styles.slipNoPlateRow}>
-          <View style={styles.slipNoBadge}>
-            <Text style={styles.slipNoText}>#{slip.slipNo}</Text>
+          <View style={styles.slipNoBadgeLight}>
+            <Text style={styles.slipNoTextLight}>#{slip.slipNo}</Text>
           </View>
-          <View style={styles.plateBadge}>
-            <Text style={styles.plateText}>{slip.vehicleNumber}</Text>
+          <View style={styles.plateBadgeLight}>
+            <Text style={styles.plateTextLight}>{slip.vehicleNumber}</Text>
           </View>
         </View>
 
         <View style={styles.statusBadgeWrapper}>
           {isComplete ? (
-            <View style={styles.completeStatusBadge}>
+            <View style={styles.completeStatusBadgeLight}>
               <View style={styles.statusDotGreen} />
-              <Text style={styles.completeStatusText}>COMPLETED</Text>
+              <Text style={styles.completeStatusTextLight}>COMPLETED</Text>
             </View>
           ) : (
-            <View style={styles.inProgressStatusBadge}>
+            <View style={styles.inProgressStatusBadgeLight}>
               <View style={styles.statusDotAmber} />
-              <Text style={styles.inProgressStatusText}>1ST WEIGHT</Text>
+              <Text style={styles.inProgressStatusTextLight}>1ST WEIGHT</Text>
             </View>
           )}
         </View>
@@ -1326,44 +1394,44 @@ function SlipCard({ slip, onViewSlip }: { slip: Weighment; onViewSlip: () => voi
 
       {/* Party Name & Material */}
       <View style={styles.slipDetailsBlock}>
-        <Text style={styles.partyNameText} numberOfLines={1}>
+        <Text style={styles.partyNameTextLight} numberOfLines={1}>
           {slip.partyName}
         </Text>
         <View style={styles.materialTagRow}>
-          <Text style={styles.materialTagLabel}>ITEM:</Text>
-          <Text style={styles.materialTagValue}>{slip.itemName}</Text>
+          <Text style={styles.materialTagLabelLight}>ITEM:</Text>
+          <Text style={styles.materialTagValueLight}>{slip.itemName}</Text>
         </View>
       </View>
 
-      {/* 3-Column Weight Grid */}
+      {/* 3-Column Weight Grid (Clean High-Contrast) */}
       <View style={styles.weightsGridRow}>
-        <View style={styles.weightColumnBox}>
-          <Text style={styles.weightColumnLabel}>GROSS</Text>
-          <Text style={styles.weightColumnValue}>{slip.grossWeight || 0.0} T</Text>
+        <View style={styles.weightColumnBoxLight}>
+          <Text style={styles.weightColumnLabelLight}>GROSS</Text>
+          <Text style={styles.weightColumnValueLight}>{slip.grossWeight || 0.0} T</Text>
         </View>
 
-        <View style={styles.weightColumnBox}>
-          <Text style={styles.weightColumnLabel}>TARE</Text>
-          <Text style={styles.weightColumnValue}>{slip.tareWeight || 0.0} T</Text>
+        <View style={styles.weightColumnBoxLight}>
+          <Text style={styles.weightColumnLabelLight}>TARE</Text>
+          <Text style={styles.weightColumnValueLight}>{slip.tareWeight || 0.0} T</Text>
         </View>
 
-        <View style={[styles.weightColumnBox, isComplete && styles.netWeightColumnBox]}>
-          <Text style={[styles.weightColumnLabel, isComplete && styles.netWeightLabelActive]}>
+        <View style={[styles.weightColumnBoxLight, isComplete && styles.netWeightColumnBoxLight]}>
+          <Text style={[styles.weightColumnLabelLight, isComplete && styles.netWeightLabelActiveLight]}>
             NET WEIGHT
           </Text>
-          <Text style={[styles.weightColumnValue, isComplete && styles.netWeightValueActive]}>
+          <Text style={[styles.weightColumnValueLight, isComplete && styles.netWeightValueActiveLight]}>
             {slip.netWeight || 0.0} T
           </Text>
         </View>
       </View>
 
       {/* Footer Info: Rate, Valuation & Ticket Action */}
-      <View style={styles.slipCardFooter}>
+      <View style={styles.slipCardFooterLight}>
         <View style={styles.slipValuationCol}>
-          <Text style={styles.rateLabelText}>
-            @ ₹{rate}/T · <Text style={styles.amountBoldText}>₹{amount}</Text>
+          <Text style={styles.rateLabelTextLight}>
+            @ ₹{rate}/T · <Text style={styles.amountBoldTextLight}>₹{amount}</Text>
           </Text>
-          <Text style={styles.slipTimeAgoText}>
+          <Text style={styles.slipTimeAgoTextLight}>
             {new Date(slip.firstTimestamp).toLocaleTimeString("en-IN", {
               hour: "2-digit",
               minute: "2-digit",
@@ -1371,8 +1439,8 @@ function SlipCard({ slip, onViewSlip }: { slip: Weighment; onViewSlip: () => voi
           </Text>
         </View>
 
-        <TouchableOpacity style={styles.viewSlipBtn} onPress={onViewSlip}>
-          <Text style={styles.viewSlipBtnText}>View Slip 📑</Text>
+        <TouchableOpacity style={styles.viewSlipBtnLight} onPress={onViewSlip}>
+          <Text style={styles.viewSlipBtnTextLight}>View Slip 📑</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -1380,17 +1448,17 @@ function SlipCard({ slip, onViewSlip }: { slip: Weighment; onViewSlip: () => voi
 }
 
 // ==========================================
-// STYLES
+// STYLES (LIGHT THEME CONSTITUTION)
 // ==========================================
 const styles = StyleSheet.create({
-  // ROOT CONTAINERS
-  safeArea: {
+  // ROOT CONTAINERS (LIGHT)
+  safeAreaLight: {
     flex: 1,
-    backgroundColor: "#070b14",
+    backgroundColor: "#f8fafc",
   },
-  contentArea: {
+  contentAreaLight: {
     flex: 1,
-    backgroundColor: "#070b14",
+    backgroundColor: "#f8fafc",
   },
   tabContent: {
     flex: 1,
@@ -1404,10 +1472,10 @@ const styles = StyleSheet.create({
     paddingBottom: 90,
   },
 
-  // SECURITY LOCK SCREEN STYLES
-  lockContainer: {
+  // SECURITY LOCK SCREEN STYLES (LIGHT)
+  lockContainerLight: {
     flex: 1,
-    backgroundColor: "#070b14",
+    backgroundColor: "#f8fafc",
     justifyContent: "space-between",
     alignItems: "center",
     paddingVertical: Platform.OS === "android" ? 40 : 20,
@@ -1417,19 +1485,203 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 20,
   },
-  // AS LOGO BADGE STYLES
+  lockBrandTitleLight: {
+    color: "#0f172a",
+    fontSize: 22,
+    fontWeight: "900",
+    letterSpacing: 1.2,
+  },
+  lockSubtitleLight: {
+    color: "#64748b",
+    fontSize: 12,
+    marginTop: 4,
+  },
+  lockSecureRowLight: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 8,
+    gap: 6,
+  },
+  secureDotLight: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#059669",
+  },
+  secureTextLight: {
+    color: "#059669",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+
+  // PIN DOTS DISPLAY (LIGHT)
+  pinDisplayContainer: {
+    alignItems: "center",
+    marginVertical: 10,
+  },
+  pinInstructionLight: {
+    color: "#334155",
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 16,
+  },
+  pinDotsRow: {
+    flexDirection: "row",
+    gap: 20,
+  },
+  pinDotLight: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#ffffff",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  pinDotFilledLight: {
+    borderColor: "#059669",
+    backgroundColor: "#ecfdf5",
+  },
+  pinDotErrorLight: {
+    borderColor: "#ef4444",
+    backgroundColor: "#fee2e2",
+  },
+  pinDotCoreLight: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#059669",
+  },
+  pinErrorText: {
+    color: "#dc2626",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 12,
+  },
+  pinHintTextLight: {
+    color: "#64748b",
+    fontSize: 11,
+    marginTop: 12,
+  },
+
+  // NUMERIC KEYPAD (LIGHT)
+  keypadGrid: {
+    width: "100%",
+    maxWidth: 320,
+    gap: 12,
+  },
+  keypadRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 16,
+  },
+  keypadButtonLight: {
+    flex: 1,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  keypadNumberLight: {
+    color: "#0f172a",
+    fontSize: 24,
+    fontWeight: "700",
+  },
+  keypadLettersLight: {
+    color: "#64748b",
+    fontSize: 9,
+    fontWeight: "600",
+    letterSpacing: 1,
+    marginTop: 1,
+  },
+  bioButtonLight: {
+    backgroundColor: "#ecfdf5",
+    borderColor: "#a7f3d0",
+  },
+  bioIconLight: {
+    fontSize: 20,
+  },
+  bioLabelLight: {
+    color: "#059669",
+    fontSize: 9,
+    fontWeight: "700",
+    marginTop: 1,
+  },
+  deleteIconLight: {
+    color: "#475569",
+    fontSize: 20,
+    fontWeight: "700",
+  },
+
+  // LOCK FOOTER
+  lockFooter: {
+    width: "100%",
+    maxWidth: 320,
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 10,
+  },
+  biometricScanBannerLight: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    gap: 12,
+    width: "100%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  bioSensorIcon: {
+    fontSize: 22,
+  },
+  bioBannerTitleLight: {
+    color: "#0f172a",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  bioBannerSubtitleLight: {
+    color: "#64748b",
+    fontSize: 10,
+  },
+  quickUnlockBtn: {
+    paddingVertical: 8,
+  },
+  quickUnlockTextLight: {
+    color: "#64748b",
+    fontSize: 11,
+    textDecorationLine: "underline",
+  },
+
+  // AS LOGO BADGE STYLES (LIGHT)
   asBadge: {
-    backgroundColor: "#0d1527",
+    backgroundColor: "#0f172a",
     borderWidth: 1.5,
-    borderColor: "#10b981",
+    borderColor: "#059669",
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
   },
   asBadgeLock: {
-    backgroundColor: "#091122",
+    backgroundColor: "#0f172a",
     borderWidth: 2,
-    borderColor: "#10b981",
+    borderColor: "#059669",
     marginBottom: 14,
   },
   asLettersContainer: {
@@ -1444,17 +1696,17 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   asLetterS: {
-    color: "#10b981",
+    color: "#34d399",
     fontWeight: "900",
     fontSize: 16,
     letterSpacing: -0.5,
   },
   asLetterALock: {
-    fontSize: 26,
+    fontSize: 28,
     letterSpacing: -1,
   },
   asLetterSLock: {
-    fontSize: 26,
+    fontSize: 28,
     letterSpacing: -0.5,
   },
   asBalanceLine: {
@@ -1478,7 +1730,7 @@ const styles = StyleSheet.create({
   asLineCenter: {
     flex: 1,
     height: 1.5,
-    backgroundColor: "#10b981",
+    backgroundColor: "#34d399",
     borderRadius: 1,
   },
   asLinePipRight: {
@@ -1488,202 +1740,14 @@ const styles = StyleSheet.create({
     backgroundColor: "#38bdf8",
   },
 
-  lockShieldBadge: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: "rgba(16, 185, 129, 0.15)",
-    borderWidth: 1,
-    borderColor: "rgba(16, 185, 129, 0.3)",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  lockShieldIcon: {
-    fontSize: 28,
-  },
-  lockBrandTitle: {
-    color: "#ffffff",
-    fontSize: 22,
-    fontWeight: "900",
-    letterSpacing: 1.5,
-  },
-  lockSubtitle: {
-    color: "#94a3b8",
-    fontSize: 12,
-    marginTop: 4,
-  },
-  lockSecureRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 8,
-    gap: 6,
-  },
-  secureDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#10b981",
-  },
-  secureText: {
-    color: "#10b981",
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-  },
-
-  // PIN DOTS DISPLAY
-  pinDisplayContainer: {
-    alignItems: "center",
-    marginVertical: 10,
-  },
-  pinInstruction: {
-    color: "#cbd5e1",
-    fontSize: 14,
-    fontWeight: "600",
-    marginBottom: 16,
-  },
-  pinDotsRow: {
-    flexDirection: "row",
-    gap: 20,
-  },
-  pinDot: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: "#334155",
-    backgroundColor: "transparent",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  pinDotFilled: {
-    borderColor: "#10b981",
-    backgroundColor: "rgba(16, 185, 129, 0.2)",
-  },
-  pinDotError: {
-    borderColor: "#ef4444",
-    backgroundColor: "rgba(239, 68, 68, 0.2)",
-  },
-  pinDotCore: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: "#10b981",
-  },
-  pinErrorText: {
-    color: "#ef4444",
-    fontSize: 12,
-    fontWeight: "700",
-    marginTop: 12,
-  },
-  pinHintText: {
-    color: "#64748b",
-    fontSize: 11,
-    marginTop: 12,
-  },
-
-  // NUMERIC KEYPAD
-  keypadGrid: {
-    width: "100%",
-    maxWidth: 320,
-    gap: 12,
-  },
-  keypadRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 16,
-  },
-  keypadButton: {
-    flex: 1,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: "#0f172a",
-    borderWidth: 1,
-    borderColor: "#1e293b",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  keypadNumber: {
-    color: "#ffffff",
-    fontSize: 24,
-    fontWeight: "700",
-  },
-  keypadLetters: {
-    color: "#64748b",
-    fontSize: 9,
-    fontWeight: "600",
-    letterSpacing: 1,
-    marginTop: 1,
-  },
-  bioButton: {
-    backgroundColor: "rgba(16, 185, 129, 0.12)",
-    borderColor: "rgba(16, 185, 129, 0.35)",
-  },
-  bioIcon: {
-    fontSize: 20,
-  },
-  bioLabel: {
-    color: "#10b981",
-    fontSize: 9,
-    fontWeight: "700",
-    marginTop: 1,
-  },
-  deleteIcon: {
-    color: "#94a3b8",
-    fontSize: 20,
-    fontWeight: "700",
-  },
-
-  // LOCK FOOTER
-  lockFooter: {
-    width: "100%",
-    maxWidth: 320,
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 10,
-  },
-  biometricScanBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#0f172a",
-    borderWidth: 1,
-    borderColor: "#1e293b",
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    gap: 12,
-    width: "100%",
-  },
-  bioSensorIcon: {
-    fontSize: 22,
-  },
-  bioBannerTitle: {
-    color: "#ffffff",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  bioBannerSubtitle: {
-    color: "#64748b",
-    fontSize: 10,
-  },
-  quickUnlockBtn: {
-    paddingVertical: 8,
-  },
-  quickUnlockText: {
-    color: "#64748b",
-    fontSize: 11,
-    textDecorationLine: "underline",
-  },
-
-  // MAIN HEADER
-  header: {
-    backgroundColor: "#070b14",
+  // MAIN HEADER (LIGHT)
+  headerLight: {
+    backgroundColor: "#ffffff",
     paddingHorizontal: 16,
     paddingTop: Platform.OS === "android" ? 38 : 12,
-    paddingBottom: 12,
+    paddingBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: "#1e293b",
+    borderBottomColor: "#e2e8f0",
   },
   headerTop: {
     flexDirection: "row",
@@ -1698,27 +1762,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
   },
-  brandLogoBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: "rgba(16, 185, 129, 0.15)",
-    borderWidth: 1,
-    borderColor: "rgba(16, 185, 129, 0.3)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  brandLogoIcon: {
-    fontSize: 18,
-  },
-  brandSubtitle: {
-    color: "#10b981",
+  brandSubtitleLight: {
+    color: "#059669",
     fontSize: 9,
     fontWeight: "800",
     letterSpacing: 1.2,
   },
-  headerTitle: {
-    color: "#ffffff",
+  headerTitleLight: {
+    color: "#0f172a",
     fontSize: 18,
     fontWeight: "900",
     letterSpacing: -0.3,
@@ -1728,27 +1779,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  headerActionBtn: {
+  headerActionBtnLight: {
     width: 38,
     height: 38,
     borderRadius: 10,
-    backgroundColor: "#0f172a",
+    backgroundColor: "#f8fafc",
     borderWidth: 1,
-    borderColor: "#1e293b",
+    borderColor: "#e2e8f0",
     justifyContent: "center",
     alignItems: "center",
   },
   headerActionIcon: {
     fontSize: 16,
   },
-  statusStrip: {
+  statusStripLight: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 10,
+    marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
+    borderTopColor: "#f1f5f9",
   },
   statusItemLeft: {
     flexDirection: "row",
@@ -1759,90 +1810,197 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#10b981",
+    backgroundColor: "#059669",
   },
   offlinePulseDot: {
-    backgroundColor: "#f59e0b",
+    backgroundColor: "#d97706",
   },
-  statusStripText: {
-    color: "#94a3b8",
+  statusStripTextLight: {
+    color: "#64748b",
     fontSize: 10,
     fontWeight: "700",
     letterSpacing: 0.5,
   },
   statusItemRight: {},
-  todayDateText: {
+  todayDateTextLight: {
     color: "#64748b",
     fontSize: 10,
     fontWeight: "600",
   },
 
-  // KPI STATS CARDS GRID
+  // ==========================================
+  // UNIVERSAL TOTALS BANNER (SHOWN AT EVERY PAGE)
+  // ==========================================
+  universalTotalsBanner: {
+    flexDirection: "row",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: "#ffffff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+    gap: 10,
+  },
+  universalBoxGreen: {
+    flex: 1,
+    backgroundColor: "#ecfdf5",
+    borderWidth: 1,
+    borderColor: "#a7f3d0",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  universalBoxBlue: {
+    flex: 1,
+    backgroundColor: "#eff6ff",
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  universalBoxHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  universalBoxLabelGreen: {
+    color: "#059669",
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  universalBoxLabelBlue: {
+    color: "#1d4ed8",
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  universalBadgeGreen: {
+    backgroundColor: "rgba(5, 150, 105, 0.15)",
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  universalBadgeTextGreen: {
+    color: "#059669",
+    fontSize: 8,
+    fontWeight: "800",
+  },
+  universalBadgeBlue: {
+    backgroundColor: "rgba(29, 78, 216, 0.15)",
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  universalBadgeTextBlue: {
+    color: "#1d4ed8",
+    fontSize: 8,
+    fontWeight: "800",
+  },
+  universalValueRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    marginTop: 2,
+    gap: 3,
+  },
+  universalValueLargeGreen: {
+    color: "#047857",
+    fontSize: 20,
+    fontWeight: "900",
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+  },
+  universalUnitGreen: {
+    color: "#059669",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  universalCurrencyBlue: {
+    color: "#1d4ed8",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  universalValueLargeBlue: {
+    color: "#1e40af",
+    fontSize: 20,
+    fontWeight: "900",
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+  },
+
+  // KPI STATS CARDS GRID (LIGHT)
   kpiGrid: {
     paddingHorizontal: 16,
-    paddingTop: 14,
-    gap: 12,
+    paddingTop: 12,
+    gap: 10,
   },
-  kpiCard: {
-    backgroundColor: "#0f172a",
+  kpiCardLight: {
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderRadius: 16,
+    borderColor: "#e2e8f0",
+    borderRadius: 14,
     padding: 14,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 2,
+    elevation: 1,
   },
-  kpiCardEmerald: {
-    borderColor: "rgba(16, 185, 129, 0.3)",
-    backgroundColor: "rgba(15, 23, 42, 0.95)",
+  kpiCardEmeraldLight: {
+    borderLeftWidth: 4,
+    borderLeftColor: "#059669",
   },
-  kpiCardBlue: {
-    borderColor: "rgba(59, 130, 246, 0.3)",
+  kpiCardBlueLight: {
+    borderLeftWidth: 4,
+    borderLeftColor: "#2563eb",
   },
-  kpiCardAmber: {
-    borderColor: "rgba(245, 158, 11, 0.3)",
+  kpiCardAmberLight: {
+    borderLeftWidth: 4,
+    borderLeftColor: "#d97706",
   },
-  kpiCardPurple: {
-    borderColor: "rgba(168, 85, 247, 0.3)",
+  kpiCardPurpleLight: {
+    borderLeftWidth: 4,
+    borderLeftColor: "#7c3aed",
   },
   kpiHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  kpiLabel: {
-    color: "#94a3b8",
+  kpiLabelLight: {
+    color: "#64748b",
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 0.8,
   },
-  kpiBadgeEmerald: {
-    backgroundColor: "rgba(16, 185, 129, 0.15)",
-    color: "#10b981",
+  kpiBadgeEmeraldLight: {
+    backgroundColor: "#ecfdf5",
+    color: "#059669",
     fontSize: 9,
     fontWeight: "800",
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 6,
   },
-  kpiBadgeBlue: {
-    backgroundColor: "rgba(59, 130, 246, 0.15)",
-    color: "#60a5fa",
+  kpiBadgeBlueLight: {
+    backgroundColor: "#eff6ff",
+    color: "#2563eb",
     fontSize: 9,
     fontWeight: "800",
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 6,
   },
-  kpiBadgeAmber: {
-    backgroundColor: "rgba(245, 158, 11, 0.15)",
-    color: "#fbbf24",
+  kpiBadgeAmberLight: {
+    backgroundColor: "#fffbeb",
+    color: "#b45309",
     fontSize: 9,
     fontWeight: "800",
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 6,
   },
-  kpiBadgePurple: {
-    backgroundColor: "rgba(168, 85, 247, 0.15)",
-    color: "#c084fc",
+  kpiBadgePurpleLight: {
+    backgroundColor: "#faf5ff",
+    color: "#7e22ce",
     fontSize: 9,
     fontWeight: "800",
     paddingHorizontal: 8,
@@ -1852,74 +2010,79 @@ const styles = StyleSheet.create({
   kpiValueRow: {
     flexDirection: "row",
     alignItems: "baseline",
-    marginTop: 6,
+    marginTop: 4,
     gap: 4,
   },
-  kpiCurrency: {
-    color: "#60a5fa",
+  kpiCurrencyLight: {
+    color: "#2563eb",
     fontSize: 20,
-    fontWeight: "700",
+    fontWeight: "800",
   },
-  kpiValueLarge: {
-    color: "#ffffff",
-    fontSize: 28,
+  kpiValueLargeLight: {
+    color: "#0f172a",
+    fontSize: 26,
     fontWeight: "900",
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
   },
-  kpiUnit: {
-    color: "#94a3b8",
+  kpiUnitLight: {
+    color: "#64748b",
     fontSize: 13,
     fontWeight: "700",
   },
-  kpiSubtext: {
+  kpiSubtextLight: {
     color: "#64748b",
     fontSize: 11,
-    marginTop: 3,
+    marginTop: 2,
   },
 
-  // QUICK MODULES
+  // QUICK MODULES (LIGHT)
   quickNavSection: {
     paddingHorizontal: 16,
-    marginTop: 18,
+    marginTop: 16,
   },
-  sectionHeaderTitle: {
-    color: "#94a3b8",
+  sectionHeaderTitleLight: {
+    color: "#475569",
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   quickNavRow: {
     gap: 8,
   },
-  quickNavCard: {
+  quickNavCardLight: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#0f172a",
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "#1e293b",
+    borderColor: "#e2e8f0",
     borderRadius: 12,
     padding: 12,
     gap: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.02,
+    shadowRadius: 2,
+    elevation: 1,
   },
   quickNavIcon: {
     fontSize: 22,
   },
-  quickNavTitle: {
-    color: "#ffffff",
+  quickNavTitleLight: {
+    color: "#0f172a",
     fontSize: 13,
     fontWeight: "700",
   },
-  quickNavDesc: {
+  quickNavDescLight: {
     color: "#64748b",
     fontSize: 11,
     marginTop: 1,
   },
 
-  // RECENT SECTION
+  // RECENT SECTION (LIGHT)
   recentSection: {
     paddingHorizontal: 16,
-    marginTop: 20,
+    marginTop: 18,
   },
   recentHeaderRow: {
     flexDirection: "row",
@@ -1927,20 +2090,25 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 8,
   },
-  viewAllText: {
-    color: "#10b981",
+  viewAllTextLight: {
+    color: "#059669",
     fontSize: 12,
     fontWeight: "700",
   },
 
-  // SLIP CARD COMPONENT
-  slipCard: {
-    backgroundColor: "#0f172a",
+  // SLIP CARD COMPONENT (LIGHT THEME)
+  slipCardLight: {
+    backgroundColor: "#ffffff",
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#1e293b",
+    borderColor: "#e2e8f0",
     padding: 12,
     marginBottom: 10,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 2,
+    elevation: 1,
   },
   slipCardHeader: {
     flexDirection: "row",
@@ -1952,36 +2120,34 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  slipNoBadge: {
-    backgroundColor: "#1e293b",
+  slipNoBadgeLight: {
+    backgroundColor: "#f1f5f9",
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
   },
-  slipNoText: {
-    color: "#ffffff",
+  slipNoTextLight: {
+    color: "#334155",
     fontSize: 11,
     fontWeight: "800",
   },
-  plateBadge: {
-    backgroundColor: "#1e293b",
-    borderWidth: 1,
-    borderColor: "#334155",
+  plateBadgeLight: {
+    backgroundColor: "#0f172a",
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
   },
-  plateText: {
-    color: "#f8fafc",
+  plateTextLight: {
+    color: "#ffffff",
     fontSize: 11,
     fontWeight: "800",
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
   },
   statusBadgeWrapper: {},
-  completeStatusBadge: {
+  completeStatusBadgeLight: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(16, 185, 129, 0.12)",
+    backgroundColor: "#ecfdf5",
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
@@ -1991,17 +2157,17 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: "#10b981",
+    backgroundColor: "#059669",
   },
-  completeStatusText: {
-    color: "#10b981",
+  completeStatusTextLight: {
+    color: "#059669",
     fontSize: 9,
     fontWeight: "800",
   },
-  inProgressStatusBadge: {
+  inProgressStatusBadgeLight: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(245, 158, 11, 0.12)",
+    backgroundColor: "#fffbeb",
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
@@ -2011,18 +2177,18 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: "#f59e0b",
+    backgroundColor: "#d97706",
   },
-  inProgressStatusText: {
-    color: "#f59e0b",
+  inProgressStatusTextLight: {
+    color: "#b45309",
     fontSize: 9,
     fontWeight: "800",
   },
   slipDetailsBlock: {
     marginVertical: 8,
   },
-  partyNameText: {
-    color: "#e2e8f0",
+  partyNameTextLight: {
+    color: "#0f172a",
     fontSize: 13,
     fontWeight: "700",
   },
@@ -2032,120 +2198,122 @@ const styles = StyleSheet.create({
     gap: 4,
     marginTop: 2,
   },
-  materialTagLabel: {
+  materialTagLabelLight: {
     color: "#64748b",
     fontSize: 10,
     fontWeight: "700",
   },
-  materialTagValue: {
-    color: "#38bdf8",
+  materialTagValueLight: {
+    color: "#0284c7",
     fontSize: 11,
     fontWeight: "700",
   },
 
-  // 3-COLUMN WEIGHTS
+  // 3-COLUMN WEIGHTS (LIGHT)
   weightsGridRow: {
     flexDirection: "row",
     gap: 6,
     marginVertical: 6,
   },
-  weightColumnBox: {
+  weightColumnBoxLight: {
     flex: 1,
-    backgroundColor: "#070b14",
+    backgroundColor: "#f8fafc",
     borderWidth: 1,
-    borderColor: "#1e293b",
+    borderColor: "#e2e8f0",
     borderRadius: 8,
     padding: 8,
     alignItems: "center",
   },
-  weightColumnLabel: {
+  weightColumnLabelLight: {
     color: "#64748b",
     fontSize: 9,
     fontWeight: "800",
     letterSpacing: 0.5,
   },
-  weightColumnValue: {
-    color: "#cbd5e1",
+  weightColumnValueLight: {
+    color: "#1e293b",
     fontSize: 13,
     fontWeight: "800",
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
     marginTop: 2,
   },
-  netWeightColumnBox: {
-    borderColor: "rgba(16, 185, 129, 0.4)",
-    backgroundColor: "rgba(16, 185, 129, 0.08)",
+  netWeightColumnBoxLight: {
+    borderColor: "#a7f3d0",
+    backgroundColor: "#ecfdf5",
   },
-  netWeightLabelActive: {
-    color: "#10b981",
+  netWeightLabelActiveLight: {
+    color: "#059669",
   },
-  netWeightValueActive: {
-    color: "#10b981",
+  netWeightValueActiveLight: {
+    color: "#047857",
     fontSize: 14,
     fontWeight: "900",
   },
 
-  // FOOTER ROW
-  slipCardFooter: {
+  // FOOTER ROW (LIGHT)
+  slipCardFooterLight: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
+    borderTopColor: "#f1f5f9",
     paddingTop: 8,
     marginTop: 4,
   },
   slipValuationCol: {},
-  rateLabelText: {
-    color: "#94a3b8",
+  rateLabelTextLight: {
+    color: "#475569",
     fontSize: 11,
   },
-  amountBoldText: {
-    color: "#ffffff",
+  amountBoldTextLight: {
+    color: "#0f172a",
     fontWeight: "800",
   },
-  slipTimeAgoText: {
-    color: "#64748b",
+  slipTimeAgoTextLight: {
+    color: "#94a3b8",
     fontSize: 10,
     marginTop: 1,
   },
-  viewSlipBtn: {
-    backgroundColor: "#1e293b",
+  viewSlipBtnLight: {
+    backgroundColor: "#0f172a",
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 6,
   },
-  viewSlipBtnText: {
-    color: "#cbd5e1",
+  viewSlipBtnTextLight: {
+    color: "#ffffff",
     fontSize: 11,
     fontWeight: "700",
   },
 
-  // LIST HEADER & SEARCH
-  listHeaderBar: {
+  // LIST HEADER & SEARCH (LIGHT)
+  listHeaderBarLight: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  listHeaderTitle: {
-    color: "#ffffff",
+  listHeaderTitleLight: {
+    color: "#0f172a",
     fontSize: 16,
     fontWeight: "800",
   },
-  listHeaderSub: {
-    color: "#94a3b8",
+  listHeaderSubLight: {
+    color: "#64748b",
     fontSize: 11,
     marginTop: 2,
   },
-  pendingBadge: {
-    backgroundColor: "rgba(245, 158, 11, 0.15)",
+  pendingBadgeLight: {
+    backgroundColor: "#fffbeb",
+    borderWidth: 1,
+    borderColor: "#fde68a",
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
   },
-  pendingBadgeText: {
-    color: "#f59e0b",
+  pendingBadgeTextLight: {
+    color: "#b45309",
     fontSize: 10,
     fontWeight: "800",
   },
@@ -2154,23 +2322,28 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginVertical: 10,
   },
-  searchInput: {
-    backgroundColor: "#0f172a",
+  searchInputLight: {
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "#1e293b",
+    borderColor: "#e2e8f0",
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    color: "#ffffff",
+    color: "#0f172a",
     fontSize: 13,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.02,
+    shadowRadius: 2,
+    elevation: 1,
   },
   clearSearchBtn: {
     position: "absolute",
     right: 12,
     top: 10,
   },
-  clearSearchIcon: {
-    color: "#94a3b8",
+  clearSearchIconLight: {
+    color: "#64748b",
     fontSize: 14,
     fontWeight: "700",
   },
@@ -2182,155 +2355,224 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 8,
   },
-  materialChip: {
-    backgroundColor: "#0f172a",
+  materialChipLight: {
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "#1e293b",
+    borderColor: "#e2e8f0",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
   },
-  materialChipActive: {
-    backgroundColor: "rgba(16, 185, 129, 0.15)",
-    borderColor: "#10b981",
+  materialChipActiveLight: {
+    backgroundColor: "#ecfdf5",
+    borderColor: "#059669",
   },
-  materialChipText: {
-    color: "#94a3b8",
+  materialChipTextLight: {
+    color: "#64748b",
     fontSize: 11,
     fontWeight: "600",
   },
-  materialChipTextActive: {
-    color: "#10b981",
+  materialChipTextActiveLight: {
+    color: "#059669",
     fontWeight: "800",
   },
 
-  // MATERIAL REPORT TAB
-  reportSummaryBanner: {
-    backgroundColor: "#0f172a",
+  // CONTEXT DYNAMIC SUMMARY BAR (ON COMPLETED PAGE)
+  contextSummaryStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    marginHorizontal: 16,
+    marginBottom: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: "rgba(6, 182, 212, 0.3)",
+    borderColor: "#e2e8f0",
+    gap: 12,
+  },
+  contextSummaryCol: {
+    flex: 1,
+  },
+  contextSummaryLabel: {
+    color: "#64748b",
+    fontSize: 8,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  contextSummaryValGreen: {
+    color: "#059669",
+    fontSize: 14,
+    fontWeight: "900",
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+  },
+  contextSummaryValBlue: {
+    color: "#2563eb",
+    fontSize: 14,
+    fontWeight: "900",
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+  },
+  contextDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: "#e2e8f0",
+  },
+  contextBadge: {
+    backgroundColor: "#f1f5f9",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  contextBadgeText: {
+    color: "#334155",
+    fontSize: 9,
+    fontWeight: "800",
+  },
+
+  // MATERIAL REPORT TAB (LIGHT)
+  reportSummaryBannerLight: {
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
     marginHorizontal: 16,
     marginTop: 14,
     borderRadius: 16,
     padding: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 2,
+    elevation: 1,
   },
-  reportBannerTitle: {
-    color: "#ffffff",
+  reportBannerTitleLight: {
+    color: "#0f172a",
     fontSize: 16,
     fontWeight: "900",
   },
-  reportBannerDesc: {
-    color: "#94a3b8",
+  reportBannerDescLight: {
+    color: "#64748b",
     fontSize: 11,
     marginTop: 2,
   },
-  reportTotalRow: {
+  reportTotalRowLight: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-around",
     marginTop: 14,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
+    borderTopColor: "#f1f5f9",
   },
   reportTotalCol: {
     alignItems: "center",
   },
-  reportTotalLabel: {
+  reportTotalLabelLight: {
     color: "#64748b",
     fontSize: 9,
     fontWeight: "800",
     letterSpacing: 0.5,
   },
-  reportTotalVal: {
-    color: "#38bdf8",
+  reportTotalValGreen: {
+    color: "#059669",
     fontSize: 18,
     fontWeight: "900",
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
     marginTop: 2,
   },
-  reportDividerVert: {
+  reportTotalValBlue: {
+    color: "#2563eb",
+    fontSize: 18,
+    fontWeight: "900",
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    marginTop: 2,
+  },
+  reportDividerVertLight: {
     width: 1,
     height: 32,
-    backgroundColor: "#1e293b",
+    backgroundColor: "#e2e8f0",
   },
   materialsList: {
     paddingHorizontal: 16,
     marginTop: 14,
     gap: 10,
   },
-  materialCard: {
-    backgroundColor: "#0f172a",
+  materialCardLight: {
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "#1e293b",
+    borderColor: "#e2e8f0",
     borderRadius: 14,
     padding: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.02,
+    shadowRadius: 2,
+    elevation: 1,
   },
   materialCardHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
   },
-  materialRankBadge: {
+  materialRankBadgeLight: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: "rgba(56, 189, 248, 0.15)",
+    backgroundColor: "#eff6ff",
     justifyContent: "center",
     alignItems: "center",
   },
-  materialRankText: {
-    color: "#38bdf8",
+  materialRankTextLight: {
+    color: "#2563eb",
     fontSize: 11,
     fontWeight: "800",
   },
   materialTitleCol: {
     flex: 1,
   },
-  materialName: {
-    color: "#ffffff",
+  materialNameLight: {
+    color: "#0f172a",
     fontSize: 14,
     fontWeight: "800",
   },
-  materialTruckCount: {
+  materialTruckCountLight: {
     color: "#64748b",
     fontSize: 11,
     marginTop: 1,
   },
-  materialMetricsRow: {
+  materialMetricsRowLight: {
     flexDirection: "row",
     gap: 10,
     marginTop: 12,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
+    borderTopColor: "#f1f5f9",
   },
   matMetricBox: {
     flex: 1,
   },
-  matMetricLabel: {
+  matMetricLabelLight: {
     color: "#64748b",
     fontSize: 9,
     fontWeight: "800",
     letterSpacing: 0.5,
   },
-  matMetricValGreen: {
-    color: "#10b981",
+  matMetricValGreenLight: {
+    color: "#059669",
     fontSize: 16,
     fontWeight: "900",
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
     marginTop: 2,
   },
-  matMetricValBlue: {
-    color: "#60a5fa",
+  matMetricValBlueLight: {
+    color: "#2563eb",
     fontSize: 16,
     fontWeight: "900",
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
     marginTop: 2,
   },
 
-  // EMPTY STATE
-  emptyContainer: {
+  // EMPTY STATE (LIGHT)
+  emptyContainerLight: {
     padding: 40,
     alignItems: "center",
   },
@@ -2338,32 +2580,37 @@ const styles = StyleSheet.create({
     fontSize: 32,
     marginBottom: 8,
   },
-  emptyTitle: {
-    color: "#ffffff",
+  emptyTitleLight: {
+    color: "#0f172a",
     fontSize: 15,
     fontWeight: "700",
   },
-  emptyText: {
+  emptyTextLight: {
     color: "#64748b",
     fontSize: 12,
     marginTop: 4,
     textAlign: "center",
   },
 
-  // FLOATING BOTTOM NAV BAR
-  bottomNavBar: {
+  // FLOATING BOTTOM NAV BAR (LIGHT)
+  bottomNavBarLight: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
     height: 60,
-    backgroundColor: "rgba(7, 11, 20, 0.96)",
+    backgroundColor: "#ffffff",
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
+    borderTopColor: "#e2e8f0",
     flexDirection: "row",
     justifyContent: "space-around",
     alignItems: "center",
     paddingBottom: Platform.OS === "ios" ? 14 : 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 8,
   },
   navTab: {
     alignItems: "center",
@@ -2376,54 +2623,59 @@ const styles = StyleSheet.create({
   },
   navTabIcon: {
     fontSize: 18,
-    opacity: 0.5,
+    opacity: 0.6,
   },
   navTabIconActive: {
     opacity: 1,
     transform: [{ scale: 1.1 }],
   },
-  navTabLabel: {
+  navTabLabelLight: {
     color: "#64748b",
     fontSize: 10,
     fontWeight: "600",
     marginTop: 2,
   },
-  navTabLabelActive: {
-    color: "#10b981",
+  navTabLabelActiveLight: {
+    color: "#059669",
     fontWeight: "800",
   },
-  tabBadgeAmber: {
+  tabBadgeAmberLight: {
     position: "absolute",
     top: -4,
     right: -10,
-    backgroundColor: "#f59e0b",
+    backgroundColor: "#d97706",
     borderRadius: 8,
     paddingHorizontal: 4,
     paddingVertical: 1,
     minWidth: 14,
     alignItems: "center",
   },
-  tabBadgeText: {
-    color: "#0f172a",
+  tabBadgeTextLight: {
+    color: "#ffffff",
     fontSize: 9,
     fontWeight: "900",
   },
 
-  // MODAL OVERLAY & WEIGHMENT SLIP MODAL
+  // MODAL OVERLAY & TICKET MODAL (LIGHT)
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.75)",
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
     justifyContent: "center",
     alignItems: "center",
     padding: 16,
   },
-  ticketCardModal: {
+  ticketCardModalLight: {
     width: "100%",
     maxWidth: 380,
     backgroundColor: "#ffffff",
     borderRadius: 16,
     padding: 18,
     maxHeight: "85%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 6,
   },
   ticketHeader: {
     alignItems: "center",
@@ -2565,16 +2817,21 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
 
-  // SETTINGS MODAL
-  settingsModal: {
+  // SETTINGS MODAL (LIGHT)
+  settingsModalLight: {
     width: "100%",
     maxWidth: 380,
-    backgroundColor: "#0f172a",
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "#1e293b",
+    borderColor: "#e2e8f0",
     borderRadius: 16,
     padding: 18,
     maxHeight: "85%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 6,
   },
   settingsHeader: {
     flexDirection: "row",
@@ -2582,29 +2839,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 12,
   },
-  settingsModalTitle: {
-    color: "#ffffff",
+  settingsModalTitleLight: {
+    color: "#0f172a",
     fontSize: 16,
     fontWeight: "800",
   },
-  settingsCloseX: {
-    color: "#94a3b8",
+  settingsCloseXLight: {
+    color: "#64748b",
     fontSize: 16,
     fontWeight: "700",
     padding: 4,
   },
-  settingsSectionTitle: {
-    color: "#10b981",
+  settingsSectionTitleLight: {
+    color: "#059669",
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 1,
     marginTop: 8,
     marginBottom: 6,
   },
-  securityBox: {
-    backgroundColor: "#070b14",
+  securityBoxLight: {
+    backgroundColor: "#f8fafc",
     borderWidth: 1,
-    borderColor: "#1e293b",
+    borderColor: "#e2e8f0",
     borderRadius: 12,
     padding: 12,
     marginBottom: 14,
@@ -2614,12 +2871,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  securityOptionTitle: {
-    color: "#ffffff",
+  securityOptionTitleLight: {
+    color: "#0f172a",
     fontSize: 13,
     fontWeight: "700",
   },
-  securityOptionDesc: {
+  securityOptionDescLight: {
     color: "#64748b",
     fontSize: 10,
     marginTop: 1,
@@ -2629,52 +2886,52 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 12,
   },
-  toggleOn: {
-    backgroundColor: "#10b981",
+  toggleOnLight: {
+    backgroundColor: "#059669",
   },
-  toggleOff: {
-    backgroundColor: "#334155",
+  toggleOffLight: {
+    backgroundColor: "#cbd5e1",
   },
   toggleBtnText: {
     color: "#ffffff",
     fontSize: 11,
     fontWeight: "800",
   },
-  securitySubActions: {
+  securitySubActionsLight: {
     marginTop: 10,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
+    borderTopColor: "#e2e8f0",
     gap: 8,
   },
-  changePinBtn: {
-    backgroundColor: "#0f172a",
+  changePinBtnLight: {
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "#334155",
+    borderColor: "#cbd5e1",
     paddingVertical: 8,
     paddingHorizontal: 10,
     borderRadius: 8,
   },
-  changePinBtnText: {
-    color: "#e2e8f0",
+  changePinBtnTextLight: {
+    color: "#334155",
     fontSize: 11,
     fontWeight: "700",
   },
-  lockNowBtn: {
-    backgroundColor: "rgba(239, 68, 68, 0.15)",
+  lockNowBtnLight: {
+    backgroundColor: "#fef2f2",
     borderWidth: 1,
-    borderColor: "rgba(239, 68, 68, 0.3)",
+    borderColor: "#fecaca",
     paddingVertical: 8,
     paddingHorizontal: 10,
     borderRadius: 8,
   },
-  lockNowBtnText: {
-    color: "#f87171",
+  lockNowBtnTextLight: {
+    color: "#dc2626",
     fontSize: 11,
     fontWeight: "700",
   },
-  settingsDesc: {
-    color: "#94a3b8",
+  settingsDescLight: {
+    color: "#64748b",
     fontSize: 11,
     marginBottom: 8,
   },
@@ -2684,27 +2941,27 @@ const styles = StyleSheet.create({
     gap: 6,
     marginBottom: 10,
   },
-  presetChip: {
-    backgroundColor: "#070b14",
+  presetChipLight: {
+    backgroundColor: "#f1f5f9",
     borderWidth: 1,
-    borderColor: "#1e293b",
+    borderColor: "#e2e8f0",
     paddingHorizontal: 8,
     paddingVertical: 5,
     borderRadius: 6,
   },
-  presetChipText: {
-    color: "#cbd5e1",
+  presetChipTextLight: {
+    color: "#334155",
     fontSize: 10,
     fontWeight: "600",
   },
-  settingsInput: {
-    backgroundColor: "#070b14",
+  settingsInputLight: {
+    backgroundColor: "#f8fafc",
     borderWidth: 1,
-    borderColor: "#334155",
+    borderColor: "#cbd5e1",
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 8,
-    color: "#ffffff",
+    color: "#0f172a",
     fontSize: 12,
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
     marginBottom: 12,
@@ -2715,31 +2972,31 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 4,
   },
-  settingsResetBtn: {
+  settingsResetBtnLight: {
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#334155",
+    borderColor: "#cbd5e1",
   },
-  settingsResetText: {
-    color: "#94a3b8",
+  settingsResetTextLight: {
+    color: "#64748b",
     fontSize: 11,
     fontWeight: "600",
   },
-  settingsSaveBtn: {
-    backgroundColor: "#10b981",
+  settingsSaveBtnLight: {
+    backgroundColor: "#059669",
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 8,
   },
-  settingsSaveText: {
-    color: "#070b14",
+  settingsSaveTextLight: {
+    color: "#ffffff",
     fontSize: 11,
     fontWeight: "800",
   },
   changePinErrorText: {
-    color: "#ef4444",
+    color: "#dc2626",
     fontSize: 11,
     fontWeight: "700",
     marginBottom: 8,
