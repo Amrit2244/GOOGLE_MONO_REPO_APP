@@ -5,8 +5,10 @@
   "dependencies": {
     "@expo/metro-runtime": "^58.0.15",
     "expo": "~58.0.19",
-    "expo-status-bar": "~58.0.4",
+    "expo-av": "^16.0.8",
     "expo-local-authentication": "~58.0.2",
+    "expo-status-bar": "~58.0.4",
+    "expo-updates": "~58.0.18",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.87.0",
