@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Amritpal Sandhu Pro",
+    "name": "Dharamkanta Pro",
     "slug": "mobile",
-    "version": "2.0.1",
+    "version": "3.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -10,7 +10,7 @@
       "supportsTablet": true
     },
     "android": {
-      "versionCode": 3,
+      "versionCode": 4,
       "adaptiveIcon": {
         "backgroundColor": "#121212",
         "foregroundImage": "./assets/android-icon-foreground.png",

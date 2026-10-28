@@ -4,6 +4,7 @@
   "main": "expo/AppEntry.js",
   "dependencies": {
     "@expo/metro-runtime": "^58.0.15",
+    "eas-cli": "26.0.0",
     "expo": "~58.0.19",
     "expo-av": "^16.0.8",
     "expo-local-authentication": "~58.0.2",

@@ -180,14 +180,9 @@ export default function App() {
         const isEnrolled = await LocalAuthentication.isEnrolledAsync();
         if (hasHardware && isEnrolled) {
           const result = await LocalAuthentication.authenticateAsync({
-<<<<<<< HEAD
             promptMessage: "Scan Fingerprint to Unlock Dharamkanta Pro",
-            cancelLabel: "Use PIN",
-=======
-            promptMessage: "Scan Fingerprint to Unlock Amritpal App Pro",
             cancelLabel: "Use 4-Digit PIN",
             fallbackLabel: "Enter PIN",
->>>>>>> 5e4a4599d5bf1d1aeefaa30440dd74448b9a723c
             disableDeviceFallback: false,
           });
           if (result.success) {
