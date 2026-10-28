@@ -1,0 +1,1 @@
+module.exports = { apps: [{ name: "next-web", script: "node", args: ".next/standalone/apps/web/server.js", env: { PORT: 3000, DATABASE_URL: "postgresql://neondb_owner:npg_fTmyqSZJh3H6@ep-proud-violet-b46qixvn-pooler.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require" } }] }

@@ -17,7 +17,7 @@ export function WeighmentDashboard({ initialWeighments }: WeighmentDashboardProp
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [syncingSlipId, setSyncingSlipId] = useState<number | null>(null);
 
-  // New slip form state
+  // New slip form state (Inputs are in QTL)
   const [formData, setFormData] = useState({
     slipNo: "",
     partyName: "",
@@ -26,7 +26,7 @@ export function WeighmentDashboard({ initialWeighments }: WeighmentDashboardProp
     firstWeightType: "Tare",
     tareWeight: "",
     grossWeight: "",
-    rate: "450",
+    rate: "45", // e.g. ₹45/QTL = ₹450/MT
   });
 
   // Calculate distinct materials
@@ -65,23 +65,25 @@ export function WeighmentDashboard({ initialWeighments }: WeighmentDashboardProp
     });
   }, [weighments, statusFilter, selectedMaterial, searchQuery]);
 
-  // Aggregate KPI stats
+  // Aggregate KPI stats (DB stores MT, UI converts to QTL)
   const stats = useMemo(() => {
     const totalSlips = weighments.length;
     const completedSlips = weighments.filter((w) => w.isComplete);
     const inPlantSlips = weighments.filter((w) => !w.isComplete);
     const tallyPendingSlips = weighments.filter((w) => w.isComplete && !w.tallySynced);
-    const totalNetWeight = completedSlips.reduce((acc, curr) => acc + (curr.netWeight || 0), 0);
-    const totalGrossWeight = completedSlips.reduce((acc, curr) => acc + (curr.grossWeight || 0), 0);
+    
+    // Sums in Metric Tons (MT)
+    const totalNetWeightMT = completedSlips.reduce((acc, curr) => acc + (curr.netWeight || 0), 0);
+    const totalGrossWeightMT = completedSlips.reduce((acc, curr) => acc + (curr.grossWeight || 0), 0);
 
     return {
       totalSlips,
       completedCount: completedSlips.length,
       inPlantCount: inPlantSlips.length,
       tallyPendingCount: tallyPendingSlips.length,
-      totalNetWeightQtl: totalNetWeight.toFixed(2),
-      totalNetWeightMT: (totalNetWeight / 10).toFixed(2),
-      totalGrossWeightQtl: totalGrossWeight.toFixed(2),
+      totalNetWeightQtl: (totalNetWeightMT * 10).toFixed(2), // Convert MT to QTL
+      totalNetWeightMT: totalNetWeightMT.toFixed(2),
+      totalGrossWeightQtl: (totalGrossWeightMT * 10).toFixed(2), // Convert MT to QTL
     };
   }, [weighments]);
 
@@ -131,7 +133,7 @@ export function WeighmentDashboard({ initialWeighments }: WeighmentDashboardProp
     }
   };
 
-  // Export to CSV
+  // Export to CSV (Converted to QTL)
   const handleExportCSV = () => {
     if (filteredWeighments.length === 0) return;
     const headers = [
@@ -143,7 +145,8 @@ export function WeighmentDashboard({ initialWeighments }: WeighmentDashboardProp
       "Gross Wt (QTL)",
       "Tare Wt (QTL)",
       "Net Wt (QTL)",
-      "Rate (INR)",
+      "Rate per QTL (INR)",
+      "Total Amount (INR)",
       "Timestamp",
       "Tally Synced",
     ];
@@ -154,10 +157,11 @@ export function WeighmentDashboard({ initialWeighments }: WeighmentDashboardProp
       `"${w.partyName.replace(/"/g, '""')}"`,
       w.vehicleNumber,
       `"${w.itemName.replace(/"/g, '""')}"`,
-      w.grossWeight.toFixed(2),
-      w.tareWeight.toFixed(2),
-      w.netWeight.toFixed(2),
-      w.rate,
+      ((w.grossWeight || 0) * 10).toFixed(2), // MT to QTL
+      ((w.tareWeight || 0) * 10).toFixed(2),  // MT to QTL
+      ((w.netWeight || 0) * 10).toFixed(2),   // MT to QTL
+      ((w.rate || 0) / 10).toFixed(2),        // Rate/MT to Rate/QTL
+      ((w.netWeight || 0) * (w.rate || 0)).toFixed(2),
       new Date(w.firstTimestamp).toISOString(),
       w.tallySynced ? "YES" : "NO",
     ]);
@@ -172,15 +176,22 @@ export function WeighmentDashboard({ initialWeighments }: WeighmentDashboardProp
     document.body.removeChild(link);
   };
 
-  // Submit New Slip
+  // Submit New Slip (Converts User QTL Input to DB MT)
   const handleCreateSlip = async (e: React.FormEvent) => {
     e.preventDefault();
     const slipNumber = parseInt(formData.slipNo, 10) || Math.floor(1000 + Math.random() * 9000);
-    const gross = parseFloat(formData.grossWeight) || 0;
-    const tare = parseFloat(formData.tareWeight) || 0;
+    
+    // User inputs QTL -> Convert to MT for Database
+    const grossInputQtl = parseFloat(formData.grossWeight) || 0;
+    const tareInputQtl = parseFloat(formData.tareWeight) || 0;
+    const rateInputQtl = parseFloat(formData.rate) || 0;
+
+    const gross = grossInputQtl / 10;
+    const tare = tareInputQtl / 10;
+    const rate = rateInputQtl * 10;
+    
     const isComplete = gross > 0 && tare > 0 && gross > tare;
     const net = isComplete ? gross - tare : 0;
-    const rate = parseFloat(formData.rate) || 0;
 
     const payload = {
       slipNo: slipNumber,
@@ -217,7 +228,7 @@ export function WeighmentDashboard({ initialWeighments }: WeighmentDashboardProp
           firstWeightType: "Tare",
           tareWeight: "",
           grossWeight: "",
-          rate: "450",
+          rate: "45",
         });
       }
     } catch (err) {
@@ -492,8 +503,6 @@ export function WeighmentDashboard({ initialWeighments }: WeighmentDashboardProp
                 </tr>
               ) : (
                 filteredWeighments.map((w) => {
-                  const amount = (w.netWeight * (w.rate || 0)).toFixed(0);
-
                   return (
                     <tr key={w.id}>
                       <td style={{ fontWeight: 700, color: "#0f172a" }} className="font-mono">
@@ -512,14 +521,14 @@ export function WeighmentDashboard({ initialWeighments }: WeighmentDashboardProp
                       </td>
                       <td style={{ color: "#334155" }}>{w.itemName}</td>
                       <td className="font-mono tabular-nums" style={{ textAlign: "right", color: "#475569" }}>
-                        {w.grossWeight ? w.grossWeight.toFixed(2) : "--"}
+                        {w.grossWeight ? (w.grossWeight * 10).toFixed(2) : "--"}
                       </td>
                       <td className="font-mono tabular-nums" style={{ textAlign: "right", color: "#475569" }}>
-                        {w.tareWeight ? w.tareWeight.toFixed(2) : "--"}
+                        {w.tareWeight ? (w.tareWeight * 10).toFixed(2) : "--"}
                       </td>
                       <td className="font-mono tabular-nums" style={{ textAlign: "right", fontWeight: 700, color: "#0f172a" }}>
                         {w.isComplete ? (
-                          <span>{w.netWeight.toFixed(2)}</span>
+                          <span>{(w.netWeight * 10).toFixed(2)}</span>
                         ) : (
                           <span style={{ color: "#94a3b8" }}>Pending</span>
                         )}
@@ -632,28 +641,28 @@ export function WeighmentDashboard({ initialWeighments }: WeighmentDashboardProp
                 <div className="slip-weight-box font-mono">
                   <div className="slip-weight-row">
                     <span>Gross Weight:</span>
-                    <span>{selectedSlip.grossWeight ? selectedSlip.grossWeight.toFixed(2) : "0.00"} QTL</span>
+                    <span>{selectedSlip.grossWeight ? (selectedSlip.grossWeight * 10).toFixed(2) : "0.00"} QTL</span>
                   </div>
                   <div className="slip-weight-row">
                     <span>Tare (Empty) Weight:</span>
-                    <span>{selectedSlip.tareWeight ? selectedSlip.tareWeight.toFixed(2) : "0.00"} QTL</span>
+                    <span>{selectedSlip.tareWeight ? (selectedSlip.tareWeight * 10).toFixed(2) : "0.00"} QTL</span>
                   </div>
                   <div className="slip-weight-row slip-net-row">
                     <span>NET MATERIAL WEIGHT:</span>
                     <span>
-                      {selectedSlip.isComplete ? `${selectedSlip.netWeight.toFixed(2)} QTL` : "PENDING 2ND WT"}
+                      {selectedSlip.isComplete ? `${(selectedSlip.netWeight * 10).toFixed(2)} QTL` : "PENDING 2ND WT"}
                     </span>
                   </div>
                   {selectedSlip.isComplete && (
                     <div style={{ fontSize: "0.75rem", color: "#64748b", textAlign: "right", marginTop: "4px" }}>
-                      = {(selectedSlip.netWeight / 10).toFixed(3)} Metric Tonnes (MT)
+                      = {selectedSlip.netWeight.toFixed(3)} Metric Tonnes (MT)
                     </div>
                   )}
                 </div>
 
-                {selectedSlip.rate > 0 && selectedSlip.isComplete && (
+                {selectedSlip.rate !== undefined && selectedSlip.isComplete && (
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8125rem", padding: "0.5rem 0", borderBottom: "1px dashed #cbd5e1" }}>
-                    <span>Billing Rate: ₹{selectedSlip.rate.toFixed(2)} / QTL</span>
+                    <span>Billing Rate: ₹{(selectedSlip.rate / 10).toFixed(2)} / QTL</span>
                     <span><strong>Total Amount: ₹{(selectedSlip.netWeight * selectedSlip.rate).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
                   </div>
                 )}
@@ -761,7 +770,7 @@ export function WeighmentDashboard({ initialWeighments }: WeighmentDashboardProp
                       step="any"
                       value={formData.rate}
                       onChange={(e) => setFormData({ ...formData, rate: e.target.value })}
-                      placeholder="450"
+                      placeholder="45"
                       className="form-control font-mono"
                     />
                   </div>
@@ -776,7 +785,7 @@ export function WeighmentDashboard({ initialWeighments }: WeighmentDashboardProp
                       required
                       value={formData.tareWeight}
                       onChange={(e) => setFormData({ ...formData, tareWeight: e.target.value })}
-                      placeholder="e.g. 13.50"
+                      placeholder="e.g. 135.0"
                       className="form-control font-mono"
                     />
                   </div>
@@ -787,7 +796,7 @@ export function WeighmentDashboard({ initialWeighments }: WeighmentDashboardProp
                       step="0.01"
                       value={formData.grossWeight}
                       onChange={(e) => setFormData({ ...formData, grossWeight: e.target.value })}
-                      placeholder="e.g. 42.80 (Optional for 1st wt)"
+                      placeholder="e.g. 428.0 (Optional for 1st wt)"
                       className="form-control font-mono"
                     />
                   </div>

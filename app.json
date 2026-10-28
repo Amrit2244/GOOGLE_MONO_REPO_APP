@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "c69e4c7b-8ba0-4703-96f3-cab54bdbd38b"
+      }
+    },
+    "android": {
+      "package": "com.amritpalsandhu.stonecrushermonorepo"
+    }
+  }
+}
